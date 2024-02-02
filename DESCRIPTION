@@ -7,3 +7,4 @@ Maintainer: Gavin Duley <35475930+GavinDuley@users.noreply.github.com>
   Description: This package contains some functions that I have created.
     At the moment, it is mainly focussed on anova summary tables.
 License: GPL-3.0
+RoxygenNote: 7.2.3
