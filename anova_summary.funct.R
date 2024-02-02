@@ -1,4 +1,5 @@
 # Some R AoV summary functions
+# https://github.com/GavinDuley/PenguinoidsR
 # Copyright (c) 2024 onwards, Gavin Duley
 # Licenced under the GPL-3.0 licence
 
@@ -9,6 +10,9 @@
 # Where aov_data is the data frame containing the data to be analysed, 
 # "Group" is the name of the column containing the group names, 
 # and "stats_summary.xlsx" is the name of the output file.
+# Note that it will default to using "stats_summary.xlsx" if no file 
+# name is provided. The other options do not have defaults 
+# and must be specified.
 aovSummaryTable <- function(aov_data, group_var, output_file = "stats_summary.xlsx") {
   # List of required packages
   packages <- c("agricolae", "dplyr", "gtools", "openxlsx")
