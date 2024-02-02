@@ -5,14 +5,20 @@
 
 # aovSummaryTable -------------------------------------------------------------
 
-# How to run this function:
-# aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
-# Where aov_data is the data frame containing the data to be analysed, 
-# "Group" is the name of the column containing the group names, 
-# and "stats_summary.xlsx" is the name of the output file.
-# Note that it will default to using "stats_summary.xlsx" if no file 
-# name is provided. The other options do not have defaults 
-# and must be specified.
+#' AoV summary table
+#'
+#' @description This allows you to generate a table of means and key statistical
+#'  values from an analysis of variance (AoV) test. It uses the agricolae, dplyr,
+#'  gtools, and openxlsx packages. 
+#'  It does not cope with interactions at the moment.
+#'
+#' @param aov_data The data frame containing the data to be analysed.
+#' @param group_var The name of the column containing the group names (in quotes).
+#' @param output_file The name of the output file (in quotes). Defaults to "stats_summary.xlsx".
+#' @return Returns a summary table and saves it as an Excel file in the active directory.
+#' @examples aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
+#' your_function_name(1, 2)
+#' @export
 aovSummaryTable <- function(aov_data, group_var, output_file = "stats_summary.xlsx") {
   # List of required packages
   packages <- c("agricolae", "dplyr", "gtools", "openxlsx")
