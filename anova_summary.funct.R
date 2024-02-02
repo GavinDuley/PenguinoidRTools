@@ -4,7 +4,7 @@
 
 # aovSummaryTable -------------------------------------------------------------
 
-# How to run:
+# How to run this function:
 # aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
 # Where aov_data is the data frame containing the data to be analysed, 
 # "Group" is the name of the column containing the group names, 
