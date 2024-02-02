@@ -1,0 +1,9 @@
+Package: PenguinoidsR
+Type: Package
+Title: This Contains Miscellaneous Functions I Have Written
+Version: 0.1
+Author: Gavin Duley
+Maintainer: Gavin Duley <35475930+GavinDuley@users.noreply.github.com>
+  Description: This package contains some functions that I have created.
+    At the moment, it is mainly focussed on anova summary tables.
+License: GPL-3.0
