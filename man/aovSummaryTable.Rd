@@ -24,5 +24,4 @@ This allows you to generate a table of means and key statistical
 }
 \examples{
 aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
-your_function_name(1, 2)
 }

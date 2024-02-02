@@ -17,7 +17,6 @@
 #' @param output_file The name of the output file (in quotes). Defaults to "stats_summary.xlsx".
 #' @return Returns a summary table and saves it as an Excel file in the active directory.
 #' @examples aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
-#' your_function_name(1, 2)
 #' @export
 aovSummaryTable <- function(aov_data, group_var, output_file = "stats_summary.xlsx") {
   # List of required packages
