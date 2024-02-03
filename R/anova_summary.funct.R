@@ -9,7 +9,9 @@
 #'
 #' @description This allows you to generate a table of means and key statistical
 #'  values from an analysis of variance (AoV) test. It uses the agricolae, dplyr,
-#'  gtools, and openxlsx packages. 
+#'  gtools, and openxlsx packages.
+#'  Please convert any non-numeric columns to factors before using this function.
+#'  Ideally, factor columns should be the first few columns in the data frame. 
 #'  It does not cope with interactions at the moment.
 #'
 #' @param aov_data The data frame containing the data to be analysed.
@@ -19,19 +21,25 @@
 #' @examples aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
 #' @export
 aovSummaryTable <- function(aov_data, group_var, output_file = "stats_summary.xlsx") {
-  # List of required packages
-  packages <- c("agricolae", "dplyr", "gtools", "openxlsx")
-  
-  # Check if packages are installed
-  for(pkg in packages){
-    if(!require(pkg, character.only = TRUE)){
-      install.packages(pkg)
-      library(pkg, character.only = TRUE)
-    }
-  }
-  
+  # # List of required packages
+  # packages <- c("agricolae", "dplyr", "gtools", "openxlsx")
+  # # Check if packages are installed
+  # for(pkg in packages){
+  #   if(!require(pkg, character.only = TRUE)){
+  #     install.packages(pkg)
+  #     library(pkg, character.only = TRUE)
+  #   }
+  # }
   summary_table <- as.data.frame(c(levels(as.factor(aov_data[[group_var]])),"P-value","F-value", "Significant")) %>% setNames("Group")
-  for (i in 4:ncol(aov_data)){
+  # Identify the indices of factor columns
+  factor_indices <- which(sapply(aov_data, is.factor))
+  
+  # Iterate over columns, skipping factor columns
+  for (i in 1:ncol(aov_data)){
+    if (i %in% factor_indices) {
+      next  # Skip this iteration if the column is a factor
+    }
+    columnname <- colnames(aov_data)[i]
     columnname <- colnames(aov_data)[i]
     if (length(unique(aov_data[,i])) == 1) {
       summary_table <- cbind(summary_table, "invariant")
