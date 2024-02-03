@@ -18,10 +18,10 @@ Returns a summary table and saves it as an Excel file in the active directory.
 }
 \description{
 This allows you to generate a table of means and key statistical
- values from an analysis of variance (AoV) test. It uses the agricolae, dplyr,
- gtools, and openxlsx packages.
+ values from an analysis of variance (AoV) test for a whole dataframe. 
+ It uses the agricolae, dplyr, gtools, and openxlsx packages.\cr
  Please convert any non-numeric columns to factors before using this function.
- Ideally, factor columns should be the first few columns in the data frame. 
+ Ideally, factor columns should be the first few columns in the data frame.\cr
  It does not cope with interactions at the moment.
 }
 \examples{
