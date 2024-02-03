@@ -39,6 +39,10 @@ aovSummaryTable <- function(aov_data, group_var, output_file = "stats_summary.xl
     if (i %in% factor_indices) {
       next  # Skip this iteration if the column is a factor
     }
+    # Check if the column is numeric
+    if (!is.numeric(aov_data[[i]])) {
+      stop(paste("Error: Column", colnames(aov_data)[i], "is not numeric or factor."))
+    }
     columnname <- colnames(aov_data)[i]
     columnname <- colnames(aov_data)[i]
     if (length(unique(aov_data[,i])) == 1) {
