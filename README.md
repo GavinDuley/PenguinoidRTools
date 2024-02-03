@@ -1,2 +1,2 @@
-# PenguinoidsR
+# PenguinoidUtils
 R functions that I made
