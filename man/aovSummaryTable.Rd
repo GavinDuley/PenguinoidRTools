@@ -4,17 +4,17 @@
 \alias{aovSummaryTable}
 \title{AoV summary table}
 \usage{
-aovSummaryTable(aov_data, group_var, output_file = "stats_summary.xlsx")
+aovSummaryTable(aov_data, group_var, output_file = NULL)
 }
 \arguments{
 \item{aov_data}{The data frame containing the data to be analysed.}
 
 \item{group_var}{The name of the column containing the group names (in quotes).}
 
-\item{output_file}{The name of the output file (in quotes). Defaults to "stats_summary.xlsx".}
+\item{output_file}{If a file name is supplied (in quotes), it will output an Excel file with the summary table. The filename should have an .xlsx extension.}
 }
 \value{
-Returns a summary table and saves it as an Excel file in the active directory.
+Returns a summary table and (optionally) saves it as an Excel file in the active directory.
 }
 \description{
 This allows you to generate a table of means and key statistical

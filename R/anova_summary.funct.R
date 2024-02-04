@@ -16,13 +16,13 @@
 #'
 #' @param aov_data The data frame containing the data to be analysed.
 #' @param group_var The name of the column containing the group names (in quotes).
-#' @param output_file The name of the output file (in quotes). Defaults to "stats_summary.xlsx".
-#' @return Returns a summary table and saves it as an Excel file in the active directory.
+#' @param output_file If a file name is supplied (in quotes), it will output an Excel file with the summary table. The filename should have an .xlsx extension.
+#' @return Returns a summary table and (optionally) saves it as an Excel file in the active directory.
 #' @examples aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
 #' @export
 aovSummaryTable <- function(aov_data, 
                             group_var, 
-                            output_file = "stats_summary.xlsx") {
+                            output_file = NULL) {
   # # List of required packages
   # packages <- c("agricolae", "dplyr", "gtools", "openxlsx")
   # # Check if packages are installed
@@ -35,7 +35,7 @@ aovSummaryTable <- function(aov_data,
   summary_table <- as.data.frame(c(levels(as.factor(aov_data[[group_var]])),
                                    "P-value",
                                    "F-value", 
-                                   "Significant")) %>% setNames("Group")
+                                   "Significant")) %>% setNames(group_var)
   # Identify the indices of factor columns
   factor_indices <- which(sapply(aov_data, is.factor))
   
@@ -78,7 +78,13 @@ aovSummaryTable <- function(aov_data,
       colnames(summary_table)[ncol(summary_table)] <- columnname
     }
   }
-  write.xlsx(summary_table, output_file, rowNames=F)
+  # Write to Excel only if output_file is specified
+  if (!is.null(output_file)) {
+    write.xlsx(summary_table, output_file, rowNames=F)
+  }
+  
+  # Always return the summary_table dataframe
+  return(summary_table)
 }
 
 # aovInteractSummaryTable -----------------------------------------------------
@@ -96,20 +102,20 @@ aovSummaryTable <- function(aov_data,
 #' @param group_var_1 The name of the column containing the first group names (in quotes).
 #' @param group_var_2 The name of the column containing the second group names (in quotes).
 #' @param interaction_funct The interaction function to use. Defaults to "*".
-#' @param output_file The name of the output file (in quotes). Defaults to "stats_summary.xlsx".
-#' @return Returns a summary table and saves it as an Excel file in the active directory.
-#' @examples aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
+#' @param output_file If a file name is supplied (in quotes), it will output an Excel file with the summary table. The filename should have an .xlsx extension.
+#' @return Returns a summary table and (optionally) saves it as an Excel file in the active directory.
+#' @examples aovSummaryTable(aov_data, "Group1","*","Group2", "stats_summary.xlsx")
 #' @export
 
 
 aovInteractSummaryTable <- function(aov_data, 
-                                    group_var_1, 
-                                    group_var_2,
+                                    group_var_1,
                                     interaction_funct = "*",
-                                    output_file = "stats_interact_summary.xlsx") { 
+                                    group_var_2,
+                                    output_file = NULL) { 
   summary_table <- as.data.frame(c(levels(as.factor(aov_data[[group_var_1]])),
-                                   levels(as.factor(aov_data[[group_var_2]])),
                                    paste0(group_var_1, " p value"),
+                                   levels(as.factor(aov_data[[group_var_2]])),
                                    paste0(group_var_2, " p value"),
                                    "Interaction p value")) %>% 
     setNames(group_var_1)
@@ -176,12 +182,18 @@ aovInteractSummaryTable <- function(aov_data,
     summary_table[ , columnname] <- 0                  # Append new column
     summary_table[ , columnname] <- c(
       group_summaries_1,
-      group_summaries_2,
       paste0(signif(summary(t.var1.aov)[[1]][1,5],digits=4), " ", summary(t.var1.aov)[[1]][1,5] %>% stars.pval),
+      group_summaries_2,
       paste0(signif(summary(t.var2.aov)[[1]][1,5],digits=4), " ", summary(t.var2.aov)[[1]][1,5] %>% stars.pval),
       paste0(signif(summary(t.inter.aov)[[1]][1,5],digits=4), " ", summary(t.inter.aov)[[1]][1,5] %>% stars.pval)
     )
   }
   }
-  write.xlsx(summary_table,output_file,rowNames=F,colNames=T)
+  # Write to Excel only if output_file is specified
+  if (!is.null(output_file)) {
+    write.xlsx(summary_table, output_file, rowNames=F)
+  }
+  
+  # Always return the summary_table dataframe
+  return(summary_table)
 }

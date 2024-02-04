@@ -7,9 +7,9 @@
 aovInteractSummaryTable(
   aov_data,
   group_var_1,
-  group_var_2,
   interaction_funct = "*",
-  output_file = "stats_interact_summary.xlsx"
+  group_var_2,
+  output_file = NULL
 )
 }
 \arguments{
@@ -17,14 +17,14 @@ aovInteractSummaryTable(
 
 \item{group_var_1}{The name of the column containing the first group names (in quotes).}
 
-\item{group_var_2}{The name of the column containing the second group names (in quotes).}
-
 \item{interaction_funct}{The interaction function to use. Defaults to "*".}
 
-\item{output_file}{The name of the output file (in quotes). Defaults to "stats_summary.xlsx".}
+\item{group_var_2}{The name of the column containing the second group names (in quotes).}
+
+\item{output_file}{If a file name is supplied (in quotes), it will output an Excel file with the summary table. The filename should have an .xlsx extension.}
 }
 \value{
-Returns a summary table and saves it as an Excel file in the active directory.
+Returns a summary table and (optionally) saves it as an Excel file in the active directory.
 }
 \description{
 This allows you to generate a table of means and key statistical
@@ -35,5 +35,5 @@ This allows you to generate a table of means and key statistical
  Ideally, factor columns should be the first few columns in the data frame.\cr
 }
 \examples{
-aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
+aovSummaryTable(aov_data, "Group1","*","Group2", "stats_summary.xlsx")
 }
