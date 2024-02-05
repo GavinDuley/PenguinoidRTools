@@ -32,6 +32,7 @@ aovSummaryTable <- function(aov_data,
   #     library(pkg, character.only = TRUE)
   #   }
   # }
+
   summary_table <- as.data.frame(c(levels(as.factor(aov_data[[group_var]])),
                                    "P-value",
                                    "F-value", 
@@ -113,10 +114,16 @@ aovInteractSummaryTable <- function(aov_data,
                                     interaction_funct = "*",
                                     group_var_2,
                                     output_file = NULL) { 
+  # Names of interactions for summary table
+  group_var_1_levels <- levels(as.factor(aov_data[[group_var_1]]))
+  group_var_2_levels <- levels(as.factor(aov_data[[group_var_2]]))
+  interactions <- expand.grid(group_var_1_levels, group_var_2_levels) %>%
+    apply(1,paste,collapse=".")
   summary_table <- as.data.frame(c(levels(as.factor(aov_data[[group_var_1]])),
                                    paste0(group_var_1, " p value"),
                                    levels(as.factor(aov_data[[group_var_2]])),
                                    paste0(group_var_2, " p value"),
+                                   interactions,
                                    "Interaction p value")) %>% 
     setNames(group_var_1)
   # Identify the indices of factor columns
@@ -158,14 +165,17 @@ aovInteractSummaryTable <- function(aov_data,
       lm(data = aov_data) %>% 
       HSD.test(group_var_2)
     
-    # test2_inter <- as.formula(paste(colnames(aov_data)[i], paste0("~ ", group_var_1,
-    #                                                         interaction_funct,
-    #                                                         group_var_2))) %>%
-    #   lm(data = aov_data) %>% 
-    #   HSD.test(group_var_1, interaction_funct, group_var_2)
+    # Create interaction term
+    interaction_term <- interaction(aov_data[[group_var_1]], aov_data[[group_var_2]])
     
-    columnname <- colnames(aov_data)[i]
+    # Fit the model
+    formula <- as.formula(paste(columnname, "~ interaction_term"))
+    test2_inter_model <- glm(formula, data = aov_data)
     
+    # Perform ANOVA and HSD test
+    test2_inter_aov <- anova(test2_inter_model)
+    test2_inter <- HSD.test(test2_inter_model, "interaction_term", alpha = 0.05, group = TRUE, console = TRUE)
+
     # Create a vector to store group summaries
     group_summaries_1 <- c()
     for (j in 1:length(test2_var1[["means"]][[columnname]])) {
@@ -177,7 +187,19 @@ aovInteractSummaryTable <- function(aov_data,
       group_summaries_2 <- c(group_summaries_2, paste0(signif(test2_var2[["means"]][[columnname]][j],digits=4), " ", test2_var2[["groups"]][["groups"]][j]))
     }
     
-        
+    # Create a named vector for the Tukey means
+    tukey_means <- setNames(test2_inter[["means"]][[columnname]], rownames(test2_inter[["means"]]))
+    
+    # Create a named vector for the Tukey groups
+    tukey_groups <- setNames(test2_inter[["groups"]][["groups"]], rownames(test2_inter[["means"]]))
+    
+    # Create a named vector to store group summaries
+    group_summaries_inter <- setNames(rep(NA, length(interactions)), interactions)
+    for (j in names(tukey_means)) {
+      group_summaries_inter[j] <- paste0(signif(tukey_means[j],digits=4), " ", tukey_groups[j])
+    }
+    
+    
     columnname <- colnames(aov_data)[i]
     summary_table[ , columnname] <- 0                  # Append new column
     summary_table[ , columnname] <- c(
@@ -185,6 +207,7 @@ aovInteractSummaryTable <- function(aov_data,
       paste0(signif(summary(t.var1.aov)[[1]][1,5],digits=4), " ", summary(t.var1.aov)[[1]][1,5] %>% stars.pval),
       group_summaries_2,
       paste0(signif(summary(t.var2.aov)[[1]][1,5],digits=4), " ", summary(t.var2.aov)[[1]][1,5] %>% stars.pval),
+      group_summaries_inter,
       paste0(signif(summary(t.inter.aov)[[1]][1,5],digits=4), " ", summary(t.inter.aov)[[1]][1,5] %>% stars.pval)
     )
   }
