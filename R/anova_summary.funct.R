@@ -1,5 +1,5 @@
 # Some R AoV summary functions
-# https://github.com/GavinDuley/PenguinoidUtils
+# https://github.com/GavinDuley/PenguinoidRTools
 # Copyright (c) 2024 onwards, Gavin Duley
 # Licenced under the GPL-3.0 licence
 
@@ -19,6 +19,11 @@
 #' @param output_file If a file name is supplied (in quotes), it will output an Excel file with the summary table. The filename should have an .xlsx extension.
 #' @return Returns a summary table and (optionally) saves it as an Excel file in the active directory.
 #' @examples aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
+#' @importFrom dplyr %>%
+#' @importFrom stats aov lm
+#' @importFrom agricolae HSD.test
+#' @importFrom openxlsx write.xlsx
+#' @importFrom gtools stars.pval
 #' @export
 aovSummaryTable <- function(aov_data, 
                             group_var, 
@@ -32,7 +37,8 @@ aovSummaryTable <- function(aov_data,
   #     library(pkg, character.only = TRUE)
   #   }
   # }
-
+  # first clean column names using janitor
+  aov_data <- janitor::clean_names(aov_data,case="parsed")
   summary_table <- as.data.frame(c(levels(as.factor(aov_data[[group_var]])),
                                    "P-value",
                                    "F-value", 
@@ -106,6 +112,11 @@ aovSummaryTable <- function(aov_data,
 #' @param output_file If a file name is supplied (in quotes), it will output an Excel file with the summary table. The filename should have an .xlsx extension.
 #' @return Returns a summary table and (optionally) saves it as an Excel file in the active directory.
 #' @examples aovSummaryTable(aov_data, "Group1","*","Group2", "stats_summary.xlsx")
+#' @importFrom dplyr %>%
+#' @importFrom stats aov lm
+#' @importFrom agricolae HSD.test
+#' @importFrom openxlsx write.xlsx
+#' @importFrom gtools stars.pval
 #' @export
 
 
@@ -113,7 +124,9 @@ aovInteractSummaryTable <- function(aov_data,
                                     group_var_1,
                                     interaction_funct = "*",
                                     group_var_2,
-                                    output_file = NULL) { 
+                                    output_file = NULL) {
+  # first clean column names using janitor
+  aov_data <- janitor::clean_names(aov_data,case="parsed")
   # Names of interactions for summary table
   group_var_1_levels <- levels(as.factor(aov_data[[group_var_1]]))
   group_var_2_levels <- levels(as.factor(aov_data[[group_var_2]]))

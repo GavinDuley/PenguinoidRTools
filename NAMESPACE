@@ -2,3 +2,9 @@
 
 export(aovInteractSummaryTable)
 export(aovSummaryTable)
+importFrom(agricolae,HSD.test)
+importFrom(dplyr,"%>%")
+importFrom(gtools,stars.pval)
+importFrom(openxlsx,write.xlsx)
+importFrom(stats,aov)
+importFrom(stats,lm)
