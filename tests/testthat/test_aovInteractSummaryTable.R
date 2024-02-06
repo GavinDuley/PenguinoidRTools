@@ -1,4 +1,4 @@
-# Load the CO2 dataset from the datasets package
+# Load libraries
 library(PenguinoidRTools)
 library(dplyr)
 
@@ -14,7 +14,7 @@ compounds <- c("Resveratrol", "Quercetin", "Epicatechin", "Catechin", "Procyanid
                "Gallic acid", "p-Coumaric acid")
 
 # Create a data frame with all combinations of regions and cultivars, each repeated twice
-region_cultivar_combinations <- expand.grid(Region = regions, Cultivar = cultivars)
+region_cultivar_combinations <- expand.grid(Règion=regions, Cultivarδ=cultivars)
 aov_data <- region_cultivar_combinations[rep(seq_len(nrow(region_cultivar_combinations)), each = 2), ]
 
 # Assign a unique wine name to each row and set it as the row name
@@ -24,9 +24,9 @@ rownames(aov_data) <- paste0("FAKEWINE", seq_len(nrow(aov_data)))
 set.seed(123)  # for reproducibility
 for (compound in compounds) {
   # Generate values based on the region and cultivar
-  values <- with(aov_data, ifelse(Region == "Coteau de Vignes" & Cultivar %in% c("Syrah", "Grenache", "Mourvèdre"),
+  values <- with(aov_data, ifelse(Règion == "Coteau de Vignes" & Cultivarδ %in% c("Syrah", "Grenache", "Mourvèdre"),
                                   rnorm(nrow(aov_data), mean = 10, sd = 2),
-                                  ifelse(Region == "Terrasse Graveleuse" & Cultivar %in% c("Cabernet Sauvignon", "Merlot", "Malbec"),
+                                  ifelse(Règion == "Terrasse Graveleuse" & Cultivarδ %in% c("Cabernet Sauvignon", "Merlot", "Malbec"),
                                          rnorm(nrow(aov_data), mean = 15, sd = 2),
                                          rnorm(nrow(aov_data), mean = 5, sd = 2))))
   
@@ -37,11 +37,11 @@ for (compound in compounds) {
 # Print the first few rows of the data frame
 head(aov_data)
 
-aov_data$Region <- as.factor(aov_data$Region)
-aov_data$Cultivar <- as.factor(aov_data$Cultivar)
+aov_data$Règion <- as.factor(aov_data$Règion)
+aov_data$Cultivarδ <- as.factor(aov_data$Cultivarδ)
 
 # Call your function with the test data
-result <- aovInteractSummaryTable(aov_data,"Region","*","Cultivar")
+result <- aovInteractSummaryTable(aov_data,"Règion","*","Cultivarδ")
 # Add assertions here to check that the result is what you expect.
 expect_equal(dim(result), c(22, 3))
 

@@ -24,6 +24,7 @@
 #' @importFrom agricolae HSD.test
 #' @importFrom openxlsx write.xlsx
 #' @importFrom gtools stars.pval
+#' @importFrom snakecase to_any_case
 #' @export
 aovSummaryTable <- function(aov_data, 
                             group_var, 
@@ -37,12 +38,31 @@ aovSummaryTable <- function(aov_data,
   #     library(pkg, character.only = TRUE)
   #   }
   # }
-  # first clean column names using janitor
-  aov_data <- janitor::clean_names(aov_data,case="parsed")
+  # checks for characters aov() will object to. Thanks to ChatGPT.
+  # Get the variable names from the dataframe
+  var_names <- names(aov_data)
+  # convert the names with snakecase::to_any_case
+  converted_var_names <- to_any_case(var_names, case = "none")
+  # Check if any variable names were changed
+  if (!all(var_names == converted_var_names)) {
+    stop(paste0("Some variable names contain special characters or spaces. 
+                Please rename your variables. This can be done easily using 
+                janitor::make_clean_names()."))
+  }
+  # Check if variable name starts with a number
+  for (var_name in var_names) {
+    if (grepl("^[0-9]", var_name)) {
+      stop(paste0("Variable name '", var_name, "' starts with a number. 
+                  Please rename your variables. This can be done easily using 
+                  janitor::clean_names()."))
+    }
+  }
+  # Create a summary table with the group variable as the first column
   summary_table <- as.data.frame(c(levels(as.factor(aov_data[[group_var]])),
                                    "P-value",
                                    "F-value", 
                                    "Significant")) %>% setNames(group_var)
+
   # Identify the indices of factor columns
   factor_indices <- which(sapply(aov_data, is.factor))
   
@@ -125,8 +145,25 @@ aovInteractSummaryTable <- function(aov_data,
                                     interaction_funct = "*",
                                     group_var_2,
                                     output_file = NULL) {
-  # first clean column names using janitor
-  aov_data <- janitor::clean_names(aov_data,case="parsed")
+  # checks for characters aov() will object to. Thanks to ChatGPT.
+  # Get the variable names from the dataframe
+  var_names <- names(aov_data)
+  # convert the names with snakecase::to_any_case
+  converted_var_names <- to_any_case(var_names, case = "none")
+  # Check if any variable names were changed
+  if (!all(var_names == converted_var_names)) {
+    stop(paste0("Some variable names contain special characters or spaces. 
+                Please rename your variables. This can be done easily using 
+                janitor::make_clean_names()."))
+  }
+  # Check if variable name starts with a number
+  for (var_name in var_names) {
+    if (grepl("^[0-9]", var_name)) {
+      stop(paste0("Variable name '", var_name, "' starts with a number. 
+                  Please rename your variables. This can be done easily using 
+                  janitor::clean_names()."))
+    }
+  }
   # Names of interactions for summary table
   group_var_1_levels <- levels(as.factor(aov_data[[group_var_1]]))
   group_var_2_levels <- levels(as.factor(aov_data[[group_var_2]]))
