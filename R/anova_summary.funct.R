@@ -216,6 +216,7 @@ aovInteractSummaryTable <- function(aov_data,
       lm(data = aov_data) %>% 
       HSD.test(group_var_2)
     
+    # next part, with thanks to Adriana
     # Create interaction term
     interaction_term <- interaction(aov_data[[group_var_1]], aov_data[[group_var_2]])
     
