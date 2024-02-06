@@ -42,7 +42,7 @@ aovSummaryTable <- function(aov_data,
   # Get the variable names from the dataframe
   var_names <- names(aov_data)
   # convert the names with snakecase::to_any_case
-  converted_var_names <- to_any_case(var_names, case = "none")
+  converted_var_names <- snakecase::to_any_case(var_names, case = "none")
   # Check if any variable names were changed
   if (!all(var_names == converted_var_names)) {
     stop(paste0("Some variable names contain special characters or spaces. 
@@ -137,6 +137,7 @@ aovSummaryTable <- function(aov_data,
 #' @importFrom agricolae HSD.test
 #' @importFrom openxlsx write.xlsx
 #' @importFrom gtools stars.pval
+#' @importFrom snakecase to_any_case
 #' @export
 
 
@@ -149,7 +150,7 @@ aovInteractSummaryTable <- function(aov_data,
   # Get the variable names from the dataframe
   var_names <- names(aov_data)
   # convert the names with snakecase::to_any_case
-  converted_var_names <- to_any_case(var_names, case = "none")
+  converted_var_names <- snakecase::to_any_case(var_names, case = "none")
   # Check if any variable names were changed
   if (!all(var_names == converted_var_names)) {
     stop(paste0("Some variable names contain special characters or spaces. 
