@@ -88,8 +88,8 @@ aovSummaryTable <- function(aov_data,
       
       # Create a vector to store group summaries
       group_summaries <- c()
-      for (j in 1:length(test2[["means"]][[columnname]])) {
-        group_summaries <- c(group_summaries, paste0(signif(test2[["means"]][[columnname]][j],digits=4), " ", test2[["groups"]][["groups"]][j]))
+      for (j in 1:length(test2[["groups"]][[columnname]])) {
+        group_summaries <- c(group_summaries, paste0(signif(test2$groups[j,1],digits=4), " ", test2$groups[j,2]))
       }
       
       summary_table <- cbind(summary_table, c(

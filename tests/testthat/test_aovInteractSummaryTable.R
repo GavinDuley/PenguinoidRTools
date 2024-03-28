@@ -3,47 +3,44 @@ library(PenguinoidRTools)
 library(dplyr)
 
 # Fake data thanks to ChatGPT
-# Define the levels for the independent variables
+# Define the regions, cultivars, winery names, and compounds
 regions <- c("Coteau de Vignes", "Terrasse Graveleuse", "Île au Vin", "Vallée des Vins")
 cultivars <- c("Syrah", "Grenache", "Mourvèdre", "Cabernet Sauvignon", "Merlot", "Malbec")
-
-# Define the names for the dependent variables
-compounds <- c("Resveratrol", "Quercetin", "Epicatechin", "Catechin", "Procyanidin B1",
-               "Procyanidin B2", "Procyanidin B3", "Procyanidin B4", "Procyanidin C1",
-               "Caffeic acid", "Coutaric acid", "Caftaric acid", "Ferulic acid",
+wineries <- c("Château de Faux", "Domaine du Pseudo", "Cave de l'Imitation", "Maison de l'Artifice")
+compounds <- c("Resveratrol", "Quercetin", "Epicatechin", "Catechin", "Procyanidin B1", 
+               "Procyanidin B2", "Procyanidin B3", "Procyanidin B4", "Procyanidin C1", 
+               "Caffeic acid", "Coutaric acid", "Caftaric acid", "Ferulic acid", 
                "Gallic acid", "p-Coumaric acid")
 
-# Create a data frame with all combinations of regions and cultivars, each repeated twice
-region_cultivar_combinations <- expand.grid(Region = regions, Cultivar = cultivars)
-aov_data <- region_cultivar_combinations[rep(seq_len(nrow(region_cultivar_combinations)), each = 2), ]
+# Create a data frame without wine names
+wine_data <- expand.grid(Region = rep(regions, each=length(cultivars)*2),
+                         Cultivar = rep(cultivars, times=length(regions)*2))
+wine_data$Winery <- sample(wineries, nrow(wine_data), replace=TRUE)
 
-# Assign a unique wine name to each row and set it as the row name
-rownames(aov_data) <- paste0("FAKEWINE", seq_len(nrow(aov_data)))
+# Limit to two wines per cultivar per region
+wine_data <- wine_data[!duplicated(wine_data[, c("Region", "Cultivar")]), ]
 
-# For each compound, generate values based on the region and cultivar and add them as a new column to the data frame
+# Add compound columns
 set.seed(123)  # for reproducibility
 for (compound in compounds) {
-  # Generate values based on the region and cultivar
-  values <- with(aov_data, ifelse(Region == "Coteau de Vignes" & Cultivar %in% c("Syrah", "Grenache", "Mourvèdre"),
-                                  rnorm(nrow(aov_data), mean = 10, sd = 2),
-                                  ifelse(Region == "Terrasse Graveleuse" & Cultivar %in% c("Cabernet Sauvignon", "Merlot", "Malbec"),
-                                         rnorm(nrow(aov_data), mean = 15, sd = 2),
-                                         rnorm(nrow(aov_data), mean = 5, sd = 2))))
-
-  # Add the values as a new column to the data frame
-  aov_data[[compound]] <- values
+  wine_data[[compound]] <- rnorm(nrow(wine_data), mean=100, sd=15)
 }
 
-# Print the first few rows of the data frame
-head(aov_data)
+# Set wine names as row names
+rownames(wine_data) <- paste0("FAKEWINE", 1:nrow(wine_data))
 
-aov_data$Region <- as.factor(aov_data$Region)
-aov_data$Cultivar <- as.factor(aov_data$Cultivar)
+# Print the data frame
+print(wine_data)
 
-aov_data<- janitor::clean_names(aov_data)
+
+wine_data$Region <- as.factor(wine_data$Region)
+wine_data$Cultivar <- as.factor(wine_data$Cultivar)
+wine_data$Winery <- as.factor(wine_data$Winery)
+
+wine_data<- janitor::clean_names(wine_data)
 
 # Call your function with the test data
-result <- aovInteractSummaryTable(aov_data,"region","*","cultivar")
+result <- aovInteractSummaryTable(wine_data,"region","*","cultivar")
 # Add assertions here to check that the result is what you expect.
 expect_equal(dim(result), c(37, 16))
 
