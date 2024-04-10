@@ -47,7 +47,7 @@ aovSummaryTable <- function(aov_data,
   if (!all(var_names == converted_var_names)) {
     stop(paste0("Some variable names contain special characters or spaces. 
                 Please rename your variables. This can be done easily using 
-                janitor::make_clean_names()."))
+                janitor::clean_names()."))
   }
   # Check if variable name starts with a number
   for (var_name in var_names) {
@@ -94,13 +94,13 @@ aovSummaryTable <- function(aov_data,
       # Create a vector to store group summaries
       group_summaries <- c()
       for (j in 1:length(test2[["groups"]][[columnname]])) {
-        group_summaries <- c(group_summaries, paste0(signif(test2$groups[j,1],digits=4), " ", test2$groups[j,2]))
+        group_summaries <- c(group_summaries, paste0(round(test2$groups[j,1],digits=4), " ", test2$groups[j,2]))
       }
       
       summary_table <- cbind(summary_table, c(
         group_summaries,
-        paste0(signif(summary(t.anova)[[1]][1,5],digits=4), " ", summary(t.anova)[[1]][1,5] %>% stars.pval),
-        signif(summary(t.anova)[[1]][1,4],digits=4),
+        paste0(round(summary(t.anova)[[1]][1,5],digits=4), " ", summary(t.anova)[[1]][1,5] %>% stars.pval),
+        round(summary(t.anova)[[1]][1,4],digits=4),
         if(summary(t.anova)[[1]][1,5] <= 0.05){
           print("SIGNIFICANT")
         } else {
