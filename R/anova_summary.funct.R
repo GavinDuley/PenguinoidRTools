@@ -85,6 +85,11 @@ aovSummaryTable <- function(aov_data,
       test2 <- as.formula(paste(colnames(aov_data)[i], paste0("~ ", group_var))) %>%
         lm(data = aov_data) %>% 
         HSD.test(group_var)
+      # reorder rownames of test2$groups to match the same order as aov_data
+      # this should fix the bug whereby the wrong mean and group were showing for 
+      # the individual rows
+      correct_order <- match(rownames(test2$means), rownames(test2$groups))
+      test2$groups <- test2$groups[correct_order,]
       
       # Create a vector to store group summaries
       group_summaries <- c()
