@@ -4,7 +4,13 @@
 \alias{aovSummaryTable}
 \title{AoV summary table}
 \usage{
-aovSummaryTable(aov_data, group_var, output_file = NULL)
+aovSummaryTable(
+  aov_data,
+  group_var,
+  output_file = NULL,
+  return_raw = FALSE,
+  output_name = "aov_results"
+)
 }
 \arguments{
 \item{aov_data}{The data frame containing the data to be analysed.}
@@ -12,9 +18,13 @@ aovSummaryTable(aov_data, group_var, output_file = NULL)
 \item{group_var}{The name of the column containing the group names (in quotes).}
 
 \item{output_file}{If a file name is supplied (in quotes), it will output an Excel file with the summary table. The filename should have an .xlsx extension.}
+
+\item{return_raw}{Logical. If TRUE, assigns a list with raw ANOVA and Tukey test outputs to the specified object. Default is FALSE.}
+
+\item{output_name}{The name of the list object to store raw ANOVA and Tukey results. Default is "aov_results".}
 }
 \value{
-Returns a summary table and (optionally) saves it as an Excel file in the active directory.
+Returns a summary table and (optionally) saves it as an Excel file in the active directory. If `return_raw` is TRUE, also assigns a list with raw ANOVA and Tukey test outputs.
 }
 \description{
 This allows you to generate a table of means and key statistical
@@ -25,5 +35,22 @@ This allows you to generate a table of means and key statistical
  It does not cope with interactions at the moment.
 }
 \examples{
-aovSummaryTable(aov_data, "Group", "stats_summary.xlsx")
+# Load the necessary package
+library(agricolae)
+
+# Load the greenhouse dataset
+data(greenhouse, package = "agricolae")
+
+# Extract the greenhouse1 data
+aov_data <- greenhouse$greenhouse1
+
+# Run the aovSummaryTable function
+result <- aovSummaryTable(
+  aov_data = aov_data, 
+  group_var = "variety", 
+  return_raw = TRUE
+)
+
+# Print the result (the summary table)
+print(result)
 }
