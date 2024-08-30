@@ -209,12 +209,6 @@ aovInteractSummaryTable <- function(aov_data,
     
     # Perform ANOVA
     t.anova <- aov(formula, data = aov_data)
-    
-    # Check if Tukey HSD test is available
-    if (!"HSD.test" %in% rownames(installed.packages())) {
-      stop("Error: 'HSD.test' is not available in the 'agricolae' package.")
-    }
-    
     test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
     
     # Store raw outputs if return_raw is TRUE
