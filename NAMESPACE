@@ -2,6 +2,7 @@
 
 export(aovInteractSummaryTable)
 export(aovSummaryTable)
+<<<<<<< HEAD
 import(dplyr)
 importFrom(agricolae,HSD.test)
 importFrom(dplyr,`%>%`)
@@ -12,3 +13,12 @@ importFrom(stats,aov)
 importFrom(stats,as.formula)
 importFrom(stats,setNames)
 importFrom(stringr,str_replace)
+=======
+importFrom(agricolae,HSD.test)
+importFrom(dplyr,"%>%")
+importFrom(gtools,stars.pval)
+importFrom(openxlsx,write.xlsx)
+importFrom(stats,aov)
+importFrom(stats,lm)
+importFrom(snakecase,to_any_case)
+>>>>>>> 78de140e8b07677a9bb7200299ca7501ec55197b
