@@ -174,93 +174,86 @@ aovSummaryTable <- function(aov_data,
 #' @importFrom gtools stars.pval
 #' @export
 #' 
-library(dplyr)
-library(agricolae)
-library(openxlsx)
-library(gtools)
 aovInteractSummaryTable <- function(aov_data, 
-                                 group_vars, 
-                                 output_file = NULL,
-                                 return_raw = FALSE,
-                                 output_name = "aov_results") {
-  # Identify the indices of factor columns
-  factor_indices <- which(sapply(aov_data, is.factor))
+                                    group_vars, 
+                                    output_file = NULL,
+                                    return_raw = FALSE,
+                                    output_name = "aov_results") {
+  # Check if group_vars are valid
+  if (!all(group_vars %in% colnames(aov_data))) {
+    stop("Error: One or more group_vars are not present in aov_data.")
+  }
   
-  # Initialize the list for raw outputs if return_raw is TRUE
+  # Initialize raw outputs list if return_raw is TRUE
   if (return_raw) {
     raw_outputs <- list()
   }
   
-  # Initialize an empty list to collect columns for the summary table
+  # Initialize the summary table list
   summary_list <- list()
   row_names <- NULL
   
-  # Iterate over columns, skipping factor columns
-  for (i in 1:ncol(aov_data)) {
-    if (i %in% factor_indices) {
-      next  # Skip this iteration if the column is a factor
+  # Iterate over numeric columns in the dataset
+  for (col_name in colnames(aov_data)) {
+    if (!is.numeric(aov_data[[col_name]])) {
+      next  # Skip non-numeric columns
     }
-    # Check if the column is numeric
-    if (!is.numeric(aov_data[[i]])) {
-      stop(paste("Error: Column", colnames(aov_data)[i], "is not numeric or factor."))
-    }
-    columnname <- colnames(aov_data)[i]
     
-    if (length(unique(aov_data[, i])) == 1) {
-      # Handle invariant columns
-      summary_list[[columnname]] <- rep("invariant", length(row_names))
-    } else {
-      # Create the formula for ANOVA with interactions
-      formula <- as.formula(paste(columnname, "~", paste(group_vars, collapse = "*")))
-      t.anova <- aov(formula, data = aov_data)
-      test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = T)
-      
-      # Save raw outputs if return_raw is TRUE
-      if (return_raw) {
-        raw_outputs[[columnname]] <- list(aov = t.anova, tukey = test2)
-      }
-      
-      # Get row names from Tukey test
-      if (is.null(row_names)) {
-        row_names <- rownames(test2[["groups"]])
-      }
-      
-      # Create a vector to store group summaries
-      group_summaries <- rep(NA, length(row_names))
-      for (j in seq_along(row_names)) {
-        # Get the row name and corresponding values
-        group_name <- row_names[j]
-        mean_value <- signif(test2[["means"]][[columnname]][j], digits = 4)
-        group_summary <- paste0(mean_value, " ", test2[["groups"]][["groups"]][j])
-        group_summaries[j] <- group_summary
-      }
-      
-      # Append results
-      p_value <- signif(summary(t.anova)[[1]][1, 5], digits = 4)
-      f_value <- signif(summary(t.anova)[[1]][1, 4], digits = 4)
-      significant <- if (p_value <= 0.05) "SIGNIFICANT" else "NOT SIGNIFICANT"
-      
-      # Append to the list
-      summary_list[[columnname]] <- c(group_summaries,
-                                      paste0(p_value, " ", stars.pval(p_value)),
-                                      f_value,
-                                      significant)
+    # Skip factor columns for now
+    if (is.factor(aov_data[[col_name]])) {
+      next
     }
+    
+    # Construct the formula
+    formula <- as.formula(paste(col_name, "~", paste(group_vars, collapse = "*")))
+    
+    # Perform ANOVA
+    t.anova <- aov(formula, data = aov_data)
+    
+    # Check if Tukey HSD test is available
+    if (!"HSD.test" %in% rownames(installed.packages())) {
+      stop("Error: 'HSD.test' is not available in the 'agricolae' package.")
+    }
+    
+    test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
+    
+    # Store raw outputs if return_raw is TRUE
+    if (return_raw) {
+      raw_outputs[[col_name]] <- list(aov = t.anova, tukey = test2)
+    }
+    
+    # Extract row names for the summary table
+    if (is.null(row_names)) {
+      row_names <- rownames(test2$groups)
+    }
+    
+    # Create summary for each column
+    group_summaries <- rep(NA, length(row_names))
+    for (i in seq_along(row_names)) {
+      group_name <- row_names[i]
+      mean_value <- signif(test2$means[[col_name]][i], digits = 4)
+      group_summary <- paste0(mean_value, " ", test2$groups$groups[i])
+      group_summaries[i] <- group_summary
+    }
+    
+    # Append results to the summary list
+    p_value <- signif(summary(t.anova)[[1]][1, 5], digits = 4)
+    f_value <- signif(summary(t.anova)[[1]][1, 4], digits = 4)
+    significant <- if (p_value <= 0.05) "SIGNIFICANT" else "NOT SIGNIFICANT"
+    
+    summary_list[[col_name]] <- c(group_summaries, paste0(p_value, " ", stars.pval(p_value)), f_value, significant)
   }
   
-  # Create a data frame from the list
-  # summary_table <- do.call(cbind, summary_list)
-  # rownames(summary_table) <- c(row_names, "P-value", "F-value", "Significant")
+  # Create data frame from the summary list
   summary_table <- as.data.frame(do.call(cbind, summary_list), stringsAsFactors = FALSE)
   rownames(summary_table) <- c(row_names, "P-value", "F-value", "Significant")
   
-  
-  # Write to Excel only if output_file is specified
+  # Write to Excel if output_file is specified
   if (!is.null(output_file)) {
-    write.xlsx(summary_table, output_file, rowNames = TRUE)
+    openxlsx::write.xlsx(summary_table, output_file, rowNames = TRUE)
   }
   
-  # If return_raw is TRUE, assign raw outputs to the specified object name in the global environment
+  # Assign raw outputs to the global environment if return_raw is TRUE
   if (return_raw) {
     assign(output_name, raw_outputs, envir = .GlobalEnv)
   }
@@ -268,4 +261,3 @@ aovInteractSummaryTable <- function(aov_data,
   # Return the summary table
   return(summary_table)
 }
-
