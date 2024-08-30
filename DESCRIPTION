@@ -1,6 +1,6 @@
-Package: PenguinoidRTools
+Package: PenguinoidUtils
 Type: Package
-Title: PenguinoidRTools: Misc Useful R Functions
+Title: PenguinoidUtils: Misc Useful R Functions
 Version: 0.1
 Author: Gavin Duley <test@email.example>
 Maintainer: Gavin Duley <test@email.example>
@@ -13,13 +13,8 @@ Imports:
     dplyr (>= 1.1.4),
     gtools (>= 3.9.5),
     openxlsx (>= 4.2.5.2),
-<<<<<<< HEAD
     rlang (>= 0.4.11),
     stringr (>= 1.4.0)
-=======
-    janitor (>= 2.1.0),
-    snakecase (>= 0.11.0)
->>>>>>> 78de140e8b07677a9bb7200299ca7501ec55197b
 RoxygenNote: 7.2.3
 Suggests: 
     testthat (>= 3.0.0)
