@@ -1,5 +1,5 @@
 library(agricolae)
-library(PenguinoidUtils)
+library(PenguinoidRTools)
 library(testthat)
 
 # Load the correct dataset

@@ -1,7 +1,7 @@
-Package: PenguinoidUtils
+Package: PenguinoidRTools
 Type: Package
-Title: PenguinoidUtils: Misc Useful R Functions
-Version: 0.1
+Title: PenguinoidRTools: Misc Useful R Functions
+Version: 0.2
 Author: Gavin Duley <test@email.example>
 Maintainer: Gavin Duley <test@email.example>
 Description: This package contains some functions that I have created.

@@ -1,5 +1,5 @@
 # Some R AoV summary functions
-# https://github.com/GavinDuley/PenguinoidUtils
+# https://github.com/GavinDuley/PenguinoidRTools
 # Copyright (c) 2024 onwards, Gavin Duley
 # Licenced under the GPL-3.0 licence
 
