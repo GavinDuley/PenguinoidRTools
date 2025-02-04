@@ -32,7 +32,8 @@ This allows you to generate a table of means and key statistical
  It uses the agricolae, dplyr, gtools, and openxlsx packages.\cr
  Please convert any non-numeric columns to factors before using this function.
  Ideally, factor columns should be the first few columns in the data frame.\cr
- It does not cope with interactions at the moment.
+ It does not cope with interactions at the moment.\cr
+ NB, BH = Benjamini-Hochberg (FDR) Correction
 }
 \examples{
 # Load the necessary package

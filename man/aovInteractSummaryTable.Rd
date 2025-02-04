@@ -3,6 +3,15 @@
 \name{aovInteractSummaryTable}
 \alias{aovInteractSummaryTable}
 \title{AoV summary table with interactions}
+\usage{
+aovInteractSummaryTable(
+  aov_data,
+  group_vars,
+  output_file = NULL,
+  return_raw = FALSE,
+  output_name = "aov_results"
+)
+}
 \arguments{
 \item{aov_data}{The data frame containing the data to be analysed.}
 
@@ -23,7 +32,8 @@ This allows you to generate a table of means and key statistical
  It uses the agricolae, dplyr, gtools, and openxlsx packages.\cr
  Please convert any non-numeric columns to factors before using this function.
  Ideally, factor columns should be the first few columns in the data frame.\cr
- It handles interactions among multiple group variables.
+ It handles interactions among multiple group variables. \cr
+ NB, BH = Benjamini-Hochberg (FDR) Correction
 }
 \examples{
 # Load the necessary package
