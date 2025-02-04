@@ -218,7 +218,7 @@ aovInteractSummaryTable <- function(aov_data,
   
   # Create the summary table data frame.
   summary_table <- as.data.frame(do.call(cbind, summary_list), stringsAsFactors = FALSE)
-  summary_table <- cbind(Type = c(row_names, "P-value", "F-value", "Significant"), summary_table)
+  summary_table <- cbind(Type = c(row_names, "P-value", "F-value", "Significant","BH Cor. p-value", "BH Significant"), summary_table)
   
   # Compute BH-corrected p-values.
   if (length(pvalues_vec) > 0) {
