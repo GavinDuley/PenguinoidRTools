@@ -81,7 +81,7 @@ aovSummaryTable <- function(aov_data,
       
       # Extract the raw p-value and F-value.
       raw_p <- summary(t.anova)[[1]][1, 5]
-      p_value_str <- paste0(signif(raw_p, digits = 4), " ", stars.pval(raw_p))
+      p_value_str <- paste0(formatC(raw_p, format = "e", digits = 3), " ", stars.pval(raw_p))
       f_value <- signif(summary(t.anova)[[1]][1, 4], digits = 4)
       significance <- if (raw_p <= 0.05) "SIGNIFICANT" else "NOT SIGNIFICANT"
       
@@ -108,7 +108,7 @@ aovSummaryTable <- function(aov_data,
     for (col in setdiff(colnames(summary_table), "Type")) {
       if (col %in% names(bh_p_values)) {
         bh_val <- bh_p_values[col]
-        bh_corr_row <- c(bh_corr_row, paste0(signif(bh_val, digits = 4), " ", stars.pval(bh_val)))
+        bh_corr_row <- c(bh_corr_row, paste0(formatC(bh_val, format="e", digits = 3), " ", stars.pval(bh_val)))
         bh_sig_row <- c(bh_sig_row, ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
       } else {
         bh_corr_row <- c(bh_corr_row, "invariant")
@@ -141,7 +141,7 @@ aovSummaryTable <- function(aov_data,
   return(summary_table)
 }
 
-# aovInterSummaryTable -----------------------------------------------------
+# aovInteractSummaryTable -----------------------------------------------------
 
 #' AoV summary table with interactions
 #'
@@ -177,50 +177,59 @@ aovInteractSummaryTable <- function(aov_data,
   }
   
   summary_list <- list()
-  row_names <- NULL
+  row_names_list <- list()
   pvalues_vec <- c()
   
-  # Iterate over numeric columns.
+  # First pass: collect all row names from group summaries
   for (col_name in colnames(aov_data)) {
-    if (!is.numeric(aov_data[[col_name]])) next
-    if (is.factor(aov_data[[col_name]])) next
+    if (!is.numeric(aov_data[[col_name]]) || is.factor(aov_data[[col_name]])) next
     
     formula <- as.formula(paste(col_name, "~", paste(group_vars, collapse = "*")))
     t.anova <- aov(formula, data = aov_data)
     test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
     
+    row_names_list[[col_name]] <- rownames(test2$groups)
+  }
+  
+  row_names <- unique(unlist(row_names_list))
+  row_labels <- c(row_names, "P-value", "F-value", "Significant")
+  
+  # Second pass: build summary for each variable
+  for (col_name in names(row_names_list)) {
+    formula <- as.formula(paste(col_name, "~", paste(group_vars, collapse = "*")))
+    t.anova <- aov(formula, data = aov_data)
+    test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
+    
+    group_summaries <- rep("Not available", length(row_names))
+    names(group_summaries) <- row_names
+    for (grp in rownames(test2$means)) {
+      if (grp %in% row_names) {
+        mean_val <- formatC(test2$means[grp, col_name], format = "f", digits = 2)
+        group_summaries[grp] <- paste0(mean_val, " ", test2$groups[grp, "groups"])
+      }
+    }
+    
+    p_val_raw <- summary(t.anova)[[1]][1, 5]
+    f_val <- summary(t.anova)[[1]][1, 4]
+    
+    group_summaries <- c(group_summaries,
+                         paste0(formatC(p_val_raw, format = "e", digits = 3), " ", stars.pval(p_val_raw)),
+                         signif(f_val, digits = 4),
+                         ifelse(p_val_raw <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
+    
+    summary_list[[col_name]] <- group_summaries
+    pvalues_vec[col_name] <- p_val_raw
+    
     if (return_raw) {
       raw_outputs[[col_name]] <- list(aov = t.anova, tukey = test2)
     }
-    
-    if (is.null(row_names)) {
-      row_names <- rownames(test2$groups)
-    }
-    
-    group_summaries <- rep(NA, length(row_names))
-    for (i in seq_along(row_names)) {
-      group_name <- row_names[i]
-      mean_value <- signif(test2$means[[col_name]][i], digits = 4)
-      group_summaries[i] <- paste0(mean_value, " ", test2$groups$groups[i])
-    }
-    
-    p_value <- signif(summary(t.anova)[[1]][1, 5], digits = 4)
-    f_value <- signif(summary(t.anova)[[1]][1, 4], digits = 4)
-    significance <- if (p_value <= 0.05) "SIGNIFICANT" else "NOT SIGNIFICANT"
-    
-    pvalues_vec[col_name] <- summary(t.anova)[[1]][1, 5]
-    
-    summary_list[[col_name]] <- c(group_summaries,
-                                  paste0(p_value, " ", stars.pval(p_value)),
-                                  f_value,
-                                  significance)
   }
   
-  # Create the summary table data frame.
-  summary_table <- as.data.frame(do.call(cbind, summary_list), stringsAsFactors = FALSE)
-  summary_table <- cbind(Type = c(row_names, "P-value", "F-value", "Significant","BH Cor. p-value", "BH Significant"), summary_table)
+  # Create the summary table
+  summary_table <- as.data.frame(summary_list, stringsAsFactors = FALSE)
+  summary_table <- cbind(Type = row_labels, summary_table)
   
-  # Compute BH-corrected p-values.
+  # Compute BH-corrected p-values
   if (length(pvalues_vec) > 0) {
     bh_p_values <- p.adjust(pvalues_vec, method = "BH")
     bh_corr_row <- c("BH-Corrected-P-value")
@@ -228,7 +237,7 @@ aovInteractSummaryTable <- function(aov_data,
     for (col in setdiff(colnames(summary_table), "Type")) {
       if (col %in% names(bh_p_values)) {
         bh_val <- bh_p_values[col]
-        bh_corr_row <- c(bh_corr_row, paste0(signif(bh_val, digits = 4), " ", stars.pval(bh_val)))
+        bh_corr_row <- c(bh_corr_row, paste0(formatC(bh_val, format = "e", digits = 3), " ", stars.pval(bh_val)))
         bh_sig_row <- c(bh_sig_row, ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
       } else {
         bh_corr_row <- c(bh_corr_row, "invariant")
