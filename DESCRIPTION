@@ -1,21 +1,27 @@
 Package: PenguinoidRTools
 Type: Package
 Title: PenguinoidRTools: Misc Useful R Functions
-Version: 0.4
+Version: 0.5
 Author: Gavin Duley <gduley@gmail.com>
 Maintainer: Gavin Duley <gduley@gmail.com>
-Description: This package contains some functions that I have created.
-    At the moment, it is mainly focused on ANOVA summary tables.
+Description: This package contains useful R functions for statistical analysis
+    and colour science. Includes ANOVA summary tables with Tukey HSD groupings
+    and Benjamini-Hochberg corrections, and CIELab colour calculations from
+    spectrophotometry data using the OIV-MA-AS2-11 method.
 License: GPL-3 | file LICENSE
 Encoding: UTF-8
-Imports: 
+Imports:
     agricolae (>= 1.3-7),
     dplyr (>= 1.1.4),
     gtools (>= 3.9.5),
     openxlsx (>= 4.2.5.2),
     rlang (>= 0.4.11),
-    stringr (>= 1.4.0)
+    stringr (>= 1.4.0),
+    tools
+Suggests:
+    testthat (>= 3.0.0),
+    ggplot2 (>= 3.4.0),
+    colorspace (>= 2.0.0),
+    svglite (>= 2.1.0)
 RoxygenNote: 7.3.2
-Suggests: 
-    testthat (>= 3.0.0)
 Config/testthat/edition: 3

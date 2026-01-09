@@ -1,10 +1,13 @@
-# standalone_functions.R
-# Standalone CIELab colour functions for R package integration
+# cielab.funct.R
+# CIELab colour functions for PenguinoidRTools
+# https://github.com/GavinDuley/PenguinoidRTools
+# Copyright (c) 2024 onwards, Gavin Duley
+# Licenced under the GPL-3.0 licence
 #
 # These functions implement CIELab colour calculations following the
 # OIV-MA-AS2-11 (R2006) method using D65 illuminant / 10 degree observer.
 #
-# Dependencies: ggplot2, colorspace
+# Dependencies: ggplot2, colorspace (for visualization functions)
 
 # ==============================================================================
 # OIV Method Coefficients (Table 1)
