@@ -83,7 +83,7 @@ aovSummaryTable <- function(aov_data,
       
       # Extract the raw p-value and F-value.
       raw_p <- summary(t.anova)[[1]][1, 5]
-      p_value_str <- paste0(formatC(raw_p, format = "e", digits = 3), " ", stars.pval(raw_p))
+      p_value_str <- paste0(signif(raw_p, digits = 4), " ", stars.pval(raw_p))
       f_value <- signif(summary(t.anova)[[1]][1, 4], digits = 4)
       significance <- if (raw_p <= 0.05) "SIGNIFICANT" else "NOT SIGNIFICANT"
       
@@ -110,7 +110,7 @@ aovSummaryTable <- function(aov_data,
     for (col in setdiff(colnames(summary_table), "Type")) {
       if (col %in% names(bh_p_values)) {
         bh_val <- bh_p_values[col]
-        bh_corr_row <- c(bh_corr_row, paste0(formatC(bh_val, format="e", digits = 3), " ", stars.pval(bh_val)))
+        bh_corr_row <- c(bh_corr_row, paste0(signif(bh_val, digits = 4), " ", stars.pval(bh_val)))
         bh_sig_row <- c(bh_sig_row, ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
       } else {
         bh_corr_row <- c(bh_corr_row, "invariant")
@@ -194,7 +194,27 @@ aovInteractSummaryTable <- function(aov_data,
   }
   
   row_names <- unique(unlist(row_names_list))
-  row_labels <- c(row_names, "P-value", "F-value", "Significant")
+
+  # Determine all effect names from the first ANOVA
+  effect_names <- c()
+  if (length(row_names_list) > 0) {
+    first_col <- names(row_names_list)[1]
+    formula <- as.formula(paste(first_col, "~", paste(group_vars, collapse = "*")))
+    temp_aov <- aov(formula, data = aov_data)
+    aov_summary <- summary(temp_aov)[[1]]
+    # Get effect names (excluding Residuals)
+    effect_names <- rownames(aov_summary)[rownames(aov_summary) != "Residuals"]
+  }
+
+  # Create row labels with separate rows for each effect's statistics
+  stat_rows <- c()
+  for (effect in effect_names) {
+    stat_rows <- c(stat_rows,
+                   paste0("P-value-", effect),
+                   paste0("F-value-", effect),
+                   paste0("Significant-", effect))
+  }
+  row_labels <- c(row_names, stat_rows)
   
   # Second pass: build summary for each variable
   for (col_name in names(row_names_list)) {
@@ -206,21 +226,34 @@ aovInteractSummaryTable <- function(aov_data,
     names(group_summaries) <- row_names
     for (grp in rownames(test2$means)) {
       if (grp %in% row_names) {
-        mean_val <- formatC(test2$means[grp, col_name], format = "f", digits = 2)
+        mean_val <- signif(test2$means[grp, col_name], digits = 4)
         group_summaries[grp] <- paste0(mean_val, " ", test2$groups[grp, "groups"])
       }
     }
-    
-    p_val_raw <- summary(t.anova)[[1]][1, 5]
-    f_val <- summary(t.anova)[[1]][1, 4]
-    
-    group_summaries <- c(group_summaries,
-                         paste0(formatC(p_val_raw, format = "e", digits = 3), " ", stars.pval(p_val_raw)),
-                         signif(f_val, digits = 4),
-                         ifelse(p_val_raw <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
-    
+
+    # Extract ALL effects' p-values and F-values (not just the first row)
+    aov_summary <- summary(t.anova)[[1]]
+    effect_stats <- c()
+    for (effect in effect_names) {
+      if (effect %in% rownames(aov_summary)) {
+        p_val <- aov_summary[effect, "Pr(>F)"]
+        f_val <- aov_summary[effect, "F value"]
+
+        effect_stats <- c(effect_stats,
+                          paste0(signif(p_val, digits = 4), " ", stars.pval(p_val)),
+                          signif(f_val, digits = 4),
+                          ifelse(p_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
+
+        # Store p-value for BH correction with unique name
+        pvalues_vec[paste0(col_name, ":", effect)] <- p_val
+      } else {
+        # If effect not found, add NA values
+        effect_stats <- c(effect_stats, NA, NA, NA)
+      }
+    }
+
+    group_summaries <- c(group_summaries, effect_stats)
     summary_list[[col_name]] <- group_summaries
-    pvalues_vec[col_name] <- p_val_raw
     
     if (return_raw) {
       raw_outputs[[col_name]] <- list(aov = t.anova, tukey = test2)
@@ -231,31 +264,45 @@ aovInteractSummaryTable <- function(aov_data,
   summary_table <- as.data.frame(summary_list, stringsAsFactors = FALSE)
   summary_table <- cbind(Type = row_labels, summary_table)
   
-  # Compute BH-corrected p-values
+  # Compute BH-corrected p-values (correcting ALL p-values together)
   if (length(pvalues_vec) > 0) {
     bh_p_values <- p.adjust(pvalues_vec, method = "BH")
-    bh_corr_row <- c("BH-Corrected-P-value")
-    bh_sig_row <- c("BH-Significant")
-    for (col in setdiff(colnames(summary_table), "Type")) {
-      if (col %in% names(bh_p_values)) {
-        bh_val <- bh_p_values[col]
-        bh_corr_row <- c(bh_corr_row, paste0(formatC(bh_val, format = "e", digits = 3), " ", stars.pval(bh_val)))
-        bh_sig_row <- c(bh_sig_row, ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
-      } else {
-        bh_corr_row <- c(bh_corr_row, "invariant")
-        bh_sig_row <- c(bh_sig_row, "invariant")
+
+    # Create separate rows for each effect's BH-corrected statistics
+    bh_rows <- list()
+    for (effect in effect_names) {
+      bh_corr_row <- c(paste0("BH-Corrected-P-value-", effect))
+      bh_sig_row <- c(paste0("BH-Significant-", effect))
+
+      for (col in setdiff(colnames(summary_table), "Type")) {
+        pval_name <- paste0(col, ":", effect)
+        if (pval_name %in% names(bh_p_values)) {
+          bh_val <- bh_p_values[pval_name]
+          bh_corr_row <- c(bh_corr_row, paste0(signif(bh_val, digits = 4), " ", stars.pval(bh_val)))
+          bh_sig_row <- c(bh_sig_row, ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
+        } else {
+          bh_corr_row <- c(bh_corr_row, "N/A")
+          bh_sig_row <- c(bh_sig_row, "N/A")
+        }
       }
+
+      bh_rows[[length(bh_rows) + 1]] <- setNames(as.list(bh_corr_row), colnames(summary_table))
+      bh_rows[[length(bh_rows) + 1]] <- setNames(as.list(bh_sig_row), colnames(summary_table))
     }
-    summary_table <- rbind(summary_table,
-                           setNames(as.list(bh_corr_row), colnames(summary_table)),
-                           setNames(as.list(bh_sig_row), colnames(summary_table)))
+
+    # Append all BH rows to the summary table
+    for (row in bh_rows) {
+      summary_table <- rbind(summary_table, row)
+    }
   } else {
-    new_row <- rep(NA, ncol(summary_table))
-    summary_table <- rbind(summary_table,
-                           setNames(new_row, colnames(summary_table)),
-                           setNames(new_row, colnames(summary_table)))
-    summary_table[nrow(summary_table)-1, "Type"] <- "BH-Corrected-P-value"
-    summary_table[nrow(summary_table), "Type"] <- "BH-Significant"
+    # If no p-values, add placeholder rows
+    for (effect in effect_names) {
+      new_row <- rep(NA, ncol(summary_table))
+      summary_table <- rbind(summary_table, setNames(new_row, colnames(summary_table)))
+      summary_table[nrow(summary_table), "Type"] <- paste0("BH-Corrected-P-value-", effect)
+      summary_table <- rbind(summary_table, setNames(new_row, colnames(summary_table)))
+      summary_table[nrow(summary_table), "Type"] <- paste0("BH-Significant-", effect)
+    }
   }
   
   if (!is.null(output_file)) {
