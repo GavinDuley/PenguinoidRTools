@@ -3,6 +3,8 @@
 # Copyright (c) 2024 onwards, Gavin Duley
 # Licenced under the GPL-3.0 licence
 
+usethis::use_github_action("check-standard")
+
 # aovSummaryTable -------------------------------------------------------------
 
 #' AoV summary table
