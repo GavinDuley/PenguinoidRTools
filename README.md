@@ -202,6 +202,85 @@ Calculate CIE76 colour difference (Delta E) between two colours.
 deltaE76(50, 10, 20, 55, 15, 25)
 ```
 
+#### `calc_colour_diff(data, compare_by, reference_level, group_by)`
+
+Calculate centroid-to-centroid colour differences between groups. Computes the mean L*, a*, b* for each group and returns differences (dL, dC, dh, dE76, dE00) relative to a reference level.
+
+**Parameters:**
+- `data` - Data frame with `CIELab_L`, `CIELab_a`, `CIELab_b` columns
+- `compare_by` - Column name of factor to compare (default: "EtOH")
+- `reference_level` - Reference level for comparisons (default: "CTRL")
+- `group_by` - Optional grouping columns for nested designs (e.g., compare within each wine)
+
+**Output:** A data.frame with columns:
+- `contrast` - Description of comparison (e.g., "Treatment – CTRL")
+- `dL` - Difference in L* (lightness)
+- `dC` - Difference in C* (chroma)
+- `dh` - Signed difference in hue angle (degrees)
+- `dE76_cent` - CIE76 Delta E between centroids
+- `dE00_cent` - CIE2000 Delta E between centroids
+
+**Example:**
+```r
+# Compare ethanol treatments to control
+results <- calc_colour_diff(
+  data = wine_colours,
+  compare_by = "EtOH",
+  reference_level = "CTRL"
+)
+
+# Compare within each wine variety
+results <- calc_colour_diff(
+  data = wine_colours,
+  compare_by = "Treatment",
+  reference_level = "Control",
+  group_by = "WineType"
+)
+```
+
+#### `calc_pairwise_dE(data, compare_by, reference_level, target_levels, group_by, method)`
+
+Calculate mean pairwise colour differences between all observations in different groups. This gives a distribution of Delta E values rather than a single centroid-based value.
+
+**Parameters:**
+- `data` - Data frame with `CIELab_L`, `CIELab_a`, `CIELab_b` columns
+- `compare_by` - Column name of factor to compare (default: "EtOH")
+- `reference_level` - Reference level for comparisons (default: "CTRL")
+- `target_levels` - Specific levels to compare (NULL = all non-reference levels)
+- `group_by` - Optional grouping columns for nested designs
+- `method` - Either "CIE1976" (default) or "CIE2000"
+
+**Output:** A data.frame with columns:
+- `comparison` - Description of comparison
+- `dE_mean` - Mean Delta E across all pairwise comparisons
+- `dE_sd` - Standard deviation of Delta E values
+
+**Example:**
+```r
+# Compare all treatments to control using CIE76
+results <- calc_pairwise_dE(
+  data = wine_colours,
+  compare_by = "EtOH",
+  reference_level = "CTRL"
+)
+
+# Use CIE2000 for more perceptually uniform differences
+results <- calc_pairwise_dE(
+  data = wine_colours,
+  compare_by = "Treatment",
+  reference_level = "Control",
+  method = "CIE2000"
+)
+
+# Compare specific treatments only
+results <- calc_pairwise_dE(
+  data = wine_colours,
+  compare_by = "Treatment",
+  reference_level = "Control",
+  target_levels = c("Low", "High")
+)
+```
+
 #### `cielab_swatch(CIELab, file, ...)`
 
 Create and save colour swatch visualisations to various formats (PNG, PDF, SVG, etc.).
@@ -267,6 +346,10 @@ result <- cielab_from_spectrum(spectra)
 - dplyr (>= 1.1.4)
 - gtools (>= 3.9.5)
 - openxlsx (>= 4.2.5.2)
+
+### For CIELab colour difference functions (`calc_colour_diff`, `calc_pairwise_dE`)
+- dplyr (>= 1.1.4)
+- farver (>= 2.1.0)
 
 ### For CIELab visualisation (`cielab_swatch`)
 - ggplot2
