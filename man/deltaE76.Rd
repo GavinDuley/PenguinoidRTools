@@ -30,4 +30,5 @@ Interpretation of Delta E values:
 }
 \examples{
 deltaE76(50, 10, 20, 55, 15, 25)
+
 }

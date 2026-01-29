@@ -25,4 +25,5 @@ cielab_spectroscopy_percentage_to_fraction(50)
 # Convert a vector of percentages
 cielab_spectroscopy_percentage_to_fraction(c(10, 50, 90))
 # Returns: c(0.1, 0.5, 0.9)
+
 }

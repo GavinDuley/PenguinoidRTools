@@ -1,7 +1,7 @@
 Package: PenguinoidRTools
 Type: Package
 Title: PenguinoidRTools: Misc Useful R Functions
-Version: 0.5
+Version: 0.6
 Author: Gavin Duley <gduley@gmail.com>
 Maintainer: Gavin Duley <gduley@gmail.com>
 Description: This package contains useful R functions for statistical analysis
@@ -24,5 +24,5 @@ Suggests:
     ggplot2 (>= 3.4.0),
     colorspace (>= 2.0.0),
     svglite (>= 2.1.0)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Config/testthat/edition: 3

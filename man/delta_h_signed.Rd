@@ -21,4 +21,5 @@ wraparound at 360 degrees correctly.
 \examples{
 delta_h_signed(10, 350)   # Returns 20 (crossing 0)
 delta_h_signed(350, 10)   # Returns -20
+
 }

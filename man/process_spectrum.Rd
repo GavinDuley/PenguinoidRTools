@@ -34,12 +34,12 @@ process_spectrum(
 }
 \value{
 A data.frame with columns:
-\describe{
-  \item{sample_name}{Sample identifier (from filename)}
-  \item{lambda}{Wavelength in nm}
-  \item{T}{Transmission as fraction (0-1)}
-}
-Data is in long format, ready for grouping and processing.
+  \describe{
+    \item{sample_name}{Sample identifier (from filename)}
+    \item{lambda}{Wavelength in nm}
+    \item{T}{Transmission as fraction (0-1)}
+  }
+  Data is in long format, ready for grouping and processing.
 }
 \description{
 Reads a folder of individual CSV files from a spectrophotometer (one file
@@ -70,6 +70,17 @@ spectra <- process_spectrum(
 )
 
 # Then use with cielab_from_spectrum for each sample
-result <- cielab_from_spectrum(spectra)
+library(dplyr)
+results <- spectra \%>\%
+  group_by(sample_name) \%>\%
+  group_map(~ {
+    spec_df <- data.frame(
+      lambda = .x$lambda,
+      T = .x$T,
+      path_mm = 10
+    )
+    cielab_from_spectrum(spec_df)
+  })
 }
+
 }

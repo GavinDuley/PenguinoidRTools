@@ -20,4 +20,5 @@ the CIELab colour space.
 }
 \examples{
 lab_to_C(30, 40)  # Returns 50
+
 }

@@ -61,9 +61,8 @@ df <- data.frame(
   CIELab_a = c(50, -5, 20),
   CIELab_b = c(30, 10, 15)
 )
-\dontrun{
 cielab_swatch(df, "swatches.png")
 cielab_swatch(df, "swatches.pdf")
 cielab_swatch(df, "swatches.svg")
-}
+
 }

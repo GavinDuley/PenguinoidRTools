@@ -20,4 +20,5 @@ Computes the hue angle (h) in degrees from CIELab a* and b* coordinates.
 \examples{
 hue_deg(1, 1)   # Returns 45
 hue_deg(-1, 1)  # Returns 135
+
 }

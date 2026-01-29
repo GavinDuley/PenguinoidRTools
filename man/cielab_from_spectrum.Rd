@@ -21,28 +21,29 @@ Default: auto-detects "WineName", "sample_name", "Sample", or first column.}
 }
 \value{
 A data.frame with one row per unique value of sample_col, containing:
-\describe{
-  \item{<sample_col>}{The sample identifier (uses original column name)}
-  \item{CIELab_L}{L* lightness (0-100)}
-  \item{CIELab_a}{a* green-red axis}
-  \item{CIELab_b}{b* blue-yellow axis}
-  \item{CIELab_C}{Chroma (saturation)}
-  \item{CIELab_H}{Hue angle in degrees (0-360)}
-}
+  \describe{
+    \item{<sample_col>}{The sample identifier (uses original column name)}
+    \item{CIELab_L}{L* lightness (0-100)}
+    \item{CIELab_a}{a* green-red axis}
+    \item{CIELab_b}{b* blue-yellow axis}
+    \item{CIELab_C}{Chroma (saturation)}
+    \item{CIELab_H}{Hue angle in degrees (0-360)}
+  }
 }
 \description{
 Calculates CIELab colour coordinates from spectrophotometry transmission
 data using the OIV-MA-AS2-11 (R2006) method with D65 illuminant and
 10 degree standard observer.
-
+}
+\details{
 This function accepts data in two formats:
 \enumerate{
   \item \strong{Wide format}: Columns like X780, X779, ... X380 with transmission values,
         plus an identifier column (e.g., WineName, Sample, etc.)
   \item \strong{Long format}: Columns for sample ID, lambda (wavelength), and T (transmission)
 }
-}
-\details{
+
+
 The function automatically detects the data format:
 \itemize{
   \item \strong{Wide format}: Has columns starting with "X" followed by numbers (e.g., X780, X500)
@@ -81,4 +82,5 @@ long_data <- data.frame(
 
 # - Use Replicate to get individual results per replicate
 # result <- cielab_from_spectrum(data, sample_col = "Replicate")
+
 }
