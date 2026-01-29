@@ -202,7 +202,7 @@ Calculate CIE76 colour difference (Delta E) between two colours.
 deltaE76(50, 10, 20, 55, 15, 25)
 ```
 
-#### `calc_color_diff(data, compare_by, reference_level, group_by)`
+#### `calc_colour_diff(data, compare_by, reference_level, group_by)`
 
 Calculate centroid-to-centroid colour differences between groups. Computes the mean L*, a*, b* for each group and returns differences (dL, dC, dh, dE76, dE00) relative to a reference level.
 
@@ -223,14 +223,14 @@ Calculate centroid-to-centroid colour differences between groups. Computes the m
 **Example:**
 ```r
 # Compare ethanol treatments to control
-results <- calc_color_diff(
+results <- calc_colour_diff(
   data = wine_colours,
   compare_by = "EtOH",
   reference_level = "CTRL"
 )
 
 # Compare within each wine variety
-results <- calc_color_diff(
+results <- calc_colour_diff(
   data = wine_colours,
   compare_by = "Treatment",
   reference_level = "Control",
@@ -347,7 +347,7 @@ result <- cielab_from_spectrum(spectra)
 - gtools (>= 3.9.5)
 - openxlsx (>= 4.2.5.2)
 
-### For CIELab colour difference functions (`calc_color_diff`, `calc_pairwise_dE`)
+### For CIELab colour difference functions (`calc_colour_diff`, `calc_pairwise_dE`)
 - dplyr (>= 1.1.4)
 - farver (>= 2.1.0)
 

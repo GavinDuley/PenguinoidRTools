@@ -463,14 +463,14 @@ deltaE76 <- function(L1, a1, b1, L2, a2, b2) {
 #' @examples
 #' \dontrun{
 #' # Compare ethanol treatments to control
-#' results <- calc_color_diff(
+#' results <- calc_colour_diff(
 #'   data = wine_colours,
 #'   compare_by = "EtOH",
 #'   reference_level = "CTRL"
 #' )
 #'
 #' # Compare within each wine variety
-#' results <- calc_color_diff(
+#' results <- calc_colour_diff(
 #'   data = wine_colours,
 #'   compare_by = "Treatment",
 #'   reference_level = "Control",
@@ -482,7 +482,7 @@ deltaE76 <- function(L1, a1, b1, L2, a2, b2) {
 #'
 #' @importFrom farver compare_colour
 #' @export
-calc_color_diff <- function(data,
+calc_colour_diff <- function(data,
                             compare_by = "EtOH",
                             reference_level = "CTRL",
                             group_by = NULL) {
@@ -611,7 +611,7 @@ calc_color_diff <- function(data,
 #' )
 #' }
 #'
-#' @seealso \code{\link{calc_color_diff}} for centroid-based comparisons
+#' @seealso \code{\link{calc_colour_diff}} for centroid-based comparisons
 #'
 #' @export
 calc_pairwise_dE <- function(data,
