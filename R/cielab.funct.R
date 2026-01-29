@@ -423,6 +423,259 @@ deltaE76 <- function(L1, a1, b1, L2, a2, b2) {
   sqrt((L2 - L1)^2 + (a2 - a1)^2 + (b2 - b1)^2)
 }
 
+#' Calculate centroid-to-centroid colour differences
+#'
+#' Computes colour differences between group centroids in CIELab space.
+#' This function calculates the mean L*, a*, b* values for each group and
+#' then computes differences (deltaL, deltaC, deltaH, deltaE76, deltaE00)
+#' between a reference level and all other levels.
+#'
+#' @param data A data.frame containing CIELab colour data with columns
+#'   \code{CIELab_L}, \code{CIELab_a}, and \code{CIELab_b}
+#' @param compare_by Character name of the column containing the factor
+#'   to compare (default: "EtOH")
+#' @param reference_level Character value within \code{compare_by} to use
+#'   as the reference for comparisons (default: "CTRL")
+#' @param group_by Character vector of column names to group by before
+#'   computing centroids. Use this for nested designs (e.g., group_by = "Wine"
+#'   to compute separate differences for each wine). NULL for no grouping.
+#'
+#' @return A data.frame with columns:
+#'   \describe{
+#'     \item{<group_by columns>}{Grouping variables (if specified)}
+#'     \item{<compare_by>}{The comparison level}
+#'     \item{contrast}{Character description of the comparison (e.g., "Treatment – CTRL")}
+#'     \item{dL}{Difference in L* (lightness)}
+#'     \item{dC}{Difference in C* (chroma)}
+#'     \item{dh}{Signed difference in hue angle (degrees)}
+#'     \item{dE76_cent}{CIE76 Delta E between centroids}
+#'     \item{dE00_cent}{CIE2000 Delta E between centroids}
+#'   }
+#'
+#' @details
+#' This function is useful for comparing colour changes between experimental
+#' conditions by reducing multiple observations to their centroids first.
+#' This approach is robust to outliers and gives a single summary value
+#' per comparison.
+#'
+#' The function requires the \pkg{farver} package for CIE2000 calculations.
+#'
+#' @examples
+#' \dontrun{
+#' # Compare ethanol treatments to control
+#' results <- calc_color_diff(
+#'   data = wine_colours,
+#'   compare_by = "EtOH",
+#'   reference_level = "CTRL"
+#' )
+#'
+#' # Compare within each wine variety
+#' results <- calc_color_diff(
+#'   data = wine_colours,
+#'   compare_by = "Treatment",
+#'   reference_level = "Control",
+#'   group_by = "WineType"
+#' )
+#' }
+#'
+#' @seealso \code{\link{calc_pairwise_dE}} for observation-level comparisons
+#'
+#' @importFrom farver compare_colour
+#' @export
+calc_color_diff <- function(data,
+                            compare_by = "EtOH",
+                            reference_level = "CTRL",
+                            group_by = NULL) {
+
+  # Build grouping variables
+  group_vars <- c(group_by, compare_by)
+
+  # Calculate centroids
+  centroids <- data %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_vars))) %>%
+    dplyr::summarise(
+      L = mean(CIELab_L),
+      a = mean(CIELab_a),
+      b = mean(CIELab_b),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      C = lab_to_C(a, b),
+      h = hue_deg(a, b)
+    )
+
+  # Get reference centroids
+  ref_centroids <- centroids %>%
+    dplyr::filter(.data[[compare_by]] == reference_level)
+
+  # Calculate differences for non-reference levels
+  results <- centroids %>%
+    dplyr::filter(.data[[compare_by]] != reference_level) %>%
+    {
+      if (!is.null(group_by)) {
+        dplyr::left_join(.,
+                  ref_centroids %>%
+                    dplyr::select(dplyr::all_of(c(group_by, "L", "a", "b", "C", "h"))),
+                  by = group_by,
+                  suffix = c("", "_ref"))
+      } else {
+        dplyr::mutate(.,
+               L_ref = ref_centroids$L[1],
+               a_ref = ref_centroids$a[1],
+               b_ref = ref_centroids$b[1],
+               C_ref = ref_centroids$C[1],
+               h_ref = ref_centroids$h[1])
+      }
+    } %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(
+      contrast = paste(.data[[compare_by]], "\u2013", reference_level),
+      dL = L - L_ref,
+      dC = C - C_ref,
+      dh = delta_h_signed(h, h_ref),
+      dE76_cent = deltaE76(L_ref, a_ref, b_ref, L, a, b),
+      dE00_cent = farver::compare_colour(
+        from = matrix(c(L_ref, a_ref, b_ref), ncol = 3),
+        to = matrix(c(L, a, b), ncol = 3),
+        from_space = "lab", method = "CIE2000"
+      )[1]
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(dplyr::all_of(c(group_by, compare_by, "contrast",
+                    "dL", "dC", "dh", "dE76_cent", "dE00_cent")))
+
+  return(results)
+}
+
+#' Calculate mean pairwise colour differences
+#'
+#' Computes pairwise colour differences between all observations in a
+#' reference group and all observations in target groups. This gives
+#' a distribution of Delta E values rather than a single centroid-based value.
+#'
+#' @param data A data.frame containing CIELab colour data with columns
+#'   \code{CIELab_L}, \code{CIELab_a}, and \code{CIELab_b}
+#' @param compare_by Character name of the column containing the factor
+#'   to compare (default: "EtOH")
+#' @param reference_level Character value within \code{compare_by} to use
+#'   as the reference for comparisons (default: "CTRL")
+#' @param target_levels Character vector of levels to compare against reference.
+#'   If NULL, all non-reference levels are used.
+#' @param group_by Character vector of column names to group by before
+#'   computing pairwise differences. NULL for no grouping.
+#' @param method Character specifying the Delta E formula to use.
+#'   Either "CIE1976" (default) or "CIE2000".
+#'
+#' @return A data.frame with columns:
+#'   \describe{
+#'     \item{<group_by columns>}{Grouping variables (if specified)}
+#'     \item{comparison}{Character description of the comparison}
+#'     \item{dE_mean}{Mean Delta E across all pairwise comparisons}
+#'     \item{dE_sd}{Standard deviation of Delta E values}
+#'   }
+#'
+#' @details
+#' This function performs all-pairs comparisons between observations in
+#' different groups. For each pair of (reference observation, target observation),
+#' it computes Delta E, then summarises these values.
+#'
+#' This approach captures the full variability in colour differences and is
+#' useful when you need confidence intervals or want to assess the spread
+#' of colour differences.
+#'
+#' The function requires the \pkg{farver} package for CIE2000 calculations.
+#'
+#' @examples
+#' \dontrun
+#' # Compare all treatments to control using CIE76
+#' results <- calc_pairwise_dE(
+#'   data = wine_colours,
+#'   compare_by = "EtOH",
+#'   reference_level = "CTRL"
+#' )
+#'
+#' # Use CIE2000 for more perceptually uniform differences
+#' results <- calc_pairwise_dE(
+#'   data = wine_colours,
+#'   compare_by = "Treatment",
+#'   reference_level = "Control",
+#'   method = "CIE2000"
+#' )
+#'
+#' # Compare specific treatments only
+#' results <- calc_pairwise_dE(
+#'   data = wine_colours,
+#'   compare_by = "Treatment",
+#'   reference_level = "Control",
+#'   target_levels = c("Low", "High")
+#' )
+#' }
+#'
+#' @seealso \code{\link{calc_color_diff}} for centroid-based comparisons
+#'
+#' @export
+calc_pairwise_dE <- function(data,
+                             compare_by = "EtOH",
+                             reference_level = "CTRL",
+                             target_levels = NULL,
+                             group_by = NULL,
+                             method = "CIE1976") {
+
+  if (is.null(target_levels)) {
+    target_levels <- setdiff(unique(data[[compare_by]]), reference_level)
+  }
+
+  # Prepare reference data
+  ref_data <- data %>%
+    dplyr::filter(.data[[compare_by]] == reference_level) %>%
+    dplyr::select(dplyr::all_of(c(group_by, "CIELab_L", "CIELab_a", "CIELab_b"))) %>%
+    dplyr::mutate(key = 1)
+
+  # Calculate for each target level
+  results <- lapply(target_levels, function(target) {
+    target_data <- data %>%
+      dplyr::filter(.data[[compare_by]] == target) %>%
+      dplyr::select(dplyr::all_of(c(group_by, "CIELab_L", "CIELab_a", "CIELab_b"))) %>%
+      dplyr::mutate(key = 1)
+
+    crossed <- dplyr::inner_join(ref_data, target_data,
+                          by = c(group_by, "key"),
+                          suffix = c("_ref", "_target"),
+                          relationship = "many-to-many")
+
+    if (method == "CIE2000") {
+      crossed <- crossed %>%
+        dplyr::rowwise() %>%
+        dplyr::mutate(
+          dE = farver::compare_colour(
+            from = matrix(c(CIELab_L_ref, CIELab_a_ref, CIELab_b_ref), ncol = 3),
+            to = matrix(c(CIELab_L_target, CIELab_a_target, CIELab_b_target), ncol = 3),
+            from_space = "lab", method = "CIE2000"
+          )[1]
+        ) %>%
+        dplyr::ungroup()
+    } else {
+      crossed <- crossed %>%
+        dplyr::mutate(
+          dE = deltaE76(CIELab_L_ref, CIELab_a_ref, CIELab_b_ref,
+                        CIELab_L_target, CIELab_a_target, CIELab_b_target)
+        )
+    }
+
+    crossed %>%
+      {if (!is.null(group_by)) dplyr::group_by(., dplyr::across(dplyr::all_of(group_by))) else .} %>%
+      dplyr::summarise(
+        comparison = paste(target, "\u2013", reference_level),
+        dE_mean = mean(dE),
+        dE_sd = sd(dE),
+        .groups = "drop"
+      )
+  }) %>%
+    dplyr::bind_rows()
+
+  return(results)
+}
+
 # ==============================================================================
 # Visualization Functions
 # ==============================================================================
