@@ -586,7 +586,7 @@ calc_colour_diff <- function(data,
 #' The function requires the \pkg{farver} package for CIE2000 calculations.
 #'
 #' @examples
-#' \dontrun
+#' \dontrun{
 #' # Compare all treatments to control using CIE76
 #' results <- calc_pairwise_dE(
 #'   data = wine_colours,
