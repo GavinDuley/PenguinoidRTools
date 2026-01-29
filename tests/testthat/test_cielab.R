@@ -234,14 +234,15 @@ test_that("cielab_from_spectrum handles path length correction", {
   # 10mm path length (default)
   result_10mm <- cielab_from_spectrum(wine_data, path_mm = 10)
 
-  # 5mm path length - should give higher L* (less absorption)
+  # 5mm path length - when claiming data was measured at 5mm, the function
+  # scales absorbance UP to 10mm equivalent, resulting in lower L* (darker)
   result_5mm <- cielab_from_spectrum(wine_data, path_mm = 5)
 
-  # Red wine should appear lighter at 5mm path length
+  # Red wine should appear darker when path length correction scales up absorbance
   red_10mm <- result_10mm[result_10mm$WineName == "RedWine", "CIELab_L"]
   red_5mm <- result_5mm[result_5mm$WineName == "RedWine", "CIELab_L"]
 
-  expect_true(red_5mm > red_10mm)
+  expect_true(red_5mm < red_10mm)
 })
 
 test_that("cielab_from_spectrum auto-detects sample column",
