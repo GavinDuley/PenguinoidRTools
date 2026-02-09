@@ -30,3 +30,13 @@ test_that("aovInteractSummaryTable produces a valid data frame with greenhouse d
   expect_true(all(sapply(result, is.character) | sapply(result, is.numeric)))
 })
 
+test_that("aovInteractSummaryTable does not include Residuals rows", {
+  greenhouse1_data <- greenhouse$greenhouse1
+
+  result <- aovInteractSummaryTable(greenhouse1_data, c("variety", "method"))
+
+  # No Type label should contain "Residuals"
+  residual_rows <- grep("Residuals", result$Type, value = TRUE)
+  expect_length(residual_rows, 0)
+})
+

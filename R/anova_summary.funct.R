@@ -201,7 +201,10 @@ aovInteractSummaryTable <- function(aov_data,
     temp_aov <- aov(formula, data = aov_data)
     aov_summary <- summary(temp_aov)[[1]]
     # Get effect names (excluding Residuals)
-    effect_names <- rownames(aov_summary)[rownames(aov_summary) != "Residuals"]
+    # Note: rownames from summary(aov()) have trailing whitespace, so we must
+    # trim before comparing.
+    effect_names <- trimws(rownames(aov_summary))
+    effect_names <- effect_names[effect_names != "Residuals"]
   }
 
   # Create row labels with separate rows for each effect's statistics
@@ -231,6 +234,7 @@ aovInteractSummaryTable <- function(aov_data,
 
     # Extract ALL effects' p-values and F-values (not just the first row)
     aov_summary <- summary(t.anova)[[1]]
+    rownames(aov_summary) <- trimws(rownames(aov_summary))
     effect_stats <- c()
     for (effect in effect_names) {
       if (effect %in% rownames(aov_summary)) {
