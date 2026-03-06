@@ -67,6 +67,18 @@ read_agilent_dad_peaks <- function(file_path, rt_window = 0.4) {
 
   lines <- readLines(file_path, warn = FALSE)
 
+  # Parse one CSV line into a character vector, handling quoted fields
+  # (including quoted fields that contain commas, as in "Sig=280,4").
+  parse_csv_line <- function(line) {
+    con <- textConnection(line)
+    on.exit(close(con))
+    tryCatch(
+      trimws(unlist(read.csv(con, header = FALSE, stringsAsFactors = FALSE,
+                             strip.white = TRUE, na.strings = ""))),
+      error = function(e) character(0)
+    )
+  }
+
   # --------------------------------------------------------------------------
   # Step 1: Parse raw lines into a list of per-sample peak data frames
   # --------------------------------------------------------------------------
@@ -103,15 +115,16 @@ read_agilent_dad_peaks <- function(file_path, rt_window = 0.4) {
       next
     }
 
-    # All lines are comma-delimited; field 1 is always the data-file path
-    parts <- strsplit(line, ",", fixed = TRUE)[[1]]
+    # Parse as quoted CSV so that commas inside quoted fields are handled
+    # correctly (e.g. "Sig=280,4" in the sample-header line).
+    parts <- parse_csv_line(line)
     if (length(parts) < 2) next
-    second <- trimws(parts[2])
+    second <- parts[2]
 
     # Sample-header line: second field contains "DAD" or "Sig="
     if (grepl("DAD|Sig=", second, perl = TRUE)) {
       flush_sample()
-      tokens <- strsplit(trimws(second), "\\s+")[[1]]
+      tokens <- strsplit(second, "\\s+")[[1]]
       dot_d  <- grep("\\.d$", tokens, value = TRUE)
       current_name <- if (length(dot_d) > 0) {
         sub("\\.d$", "", tail(dot_d, 1))
@@ -132,9 +145,9 @@ read_agilent_dad_peaks <- function(file_path, rt_window = 0.4) {
     if (length(parts) < 7) next
     current_peaks[[length(current_peaks) + 1]] <- c(
       Peak   = second,
-      RT     = trimws(parts[4]),
-      Height = trimws(parts[6]),
-      Area   = trimws(parts[7])
+      RT     = parts[4],
+      Height = parts[6],
+      Area   = parts[7]
     )
   }
 
