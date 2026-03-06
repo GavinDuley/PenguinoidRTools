@@ -46,7 +46,7 @@ aovSummaryTable <- function(aov_data,
   
   # Skip factor columns.
   factor_indices <- which(sapply(aov_data, is.factor))
-  
+
   # Loop over each column.
   for (i in 1:ncol(aov_data)) {
     if (i %in% factor_indices) next
@@ -54,8 +54,13 @@ aovSummaryTable <- function(aov_data,
       stop(paste("Error: Column", colnames(aov_data)[i], "is not numeric or factor."))
     }
     columnname <- colnames(aov_data)[i]
-    
-    if (length(unique(aov_data[[i]])) == 1) {
+
+    # Check invariance: constant response OR group_var has <2 levels after NA removal.
+    non_na_data <- aov_data[!is.na(aov_data[[i]]), ]
+    col_is_invariant <- length(unique(aov_data[[i]])) == 1 ||
+      length(unique(non_na_data[[group_var]])) < 2
+
+    if (col_is_invariant) {
       # For invariant columns, fill with "invariant".
       summary_table[[columnname]] <- rep("invariant", length(base_rows))
     } else {
@@ -178,16 +183,35 @@ aovInteractSummaryTable <- function(aov_data,
   
   summary_list <- list()
   row_names_list <- list()
+  invariant_cols <- c()
   pvalues_vec <- c()
-  
+
+  # Helper: TRUE if the column is effectively invariant for ANOVA purposes —
+  # either the response is constant, or any group_var has <2 levels after
+  # removing NAs for that column (which would cause the "contrasts" error).
+  col_is_invariant <- function(col_name) {
+    col_vals <- aov_data[[col_name]]
+    if (length(unique(col_vals)) <= 1) return(TRUE)
+    non_na_data <- aov_data[!is.na(col_vals), ]
+    for (gv in group_vars) {
+      if (length(unique(non_na_data[[gv]])) < 2) return(TRUE)
+    }
+    FALSE
+  }
+
   # First pass: collect all row names from group summaries
   for (col_name in colnames(aov_data)) {
     if (!is.numeric(aov_data[[col_name]]) || is.factor(aov_data[[col_name]])) next
-    
+
+    if (col_is_invariant(col_name)) {
+      invariant_cols <- c(invariant_cols, col_name)
+      next
+    }
+
     formula <- as.formula(paste(col_name, "~", paste(group_vars, collapse = "*")))
     t.anova <- aov(formula, data = aov_data)
     test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
-    
+
     row_names_list[[col_name]] <- rownames(test2$groups)
   }
   
@@ -261,7 +285,19 @@ aovInteractSummaryTable <- function(aov_data,
       raw_outputs[[col_name]] <- list(aov = t.anova, tukey = test2)
     }
   }
-  
+
+  # Populate invariant columns with "INVARIANT" for every row
+  n_rows <- length(row_labels)
+  for (col_name in invariant_cols) {
+    summary_list[[col_name]] <- rep("INVARIANT", n_rows)
+  }
+
+  # Restore original column order (non-invariant + invariant may be out of order)
+  all_numeric_cols <- colnames(aov_data)[
+    sapply(aov_data, is.numeric) & !sapply(aov_data, is.factor)
+  ]
+  summary_list <- summary_list[intersect(all_numeric_cols, names(summary_list))]
+
   # Create the summary table
   summary_table <- as.data.frame(summary_list, stringsAsFactors = FALSE)
   summary_table <- cbind(Type = row_labels, summary_table)
