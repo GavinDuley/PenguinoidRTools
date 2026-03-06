@@ -14,8 +14,8 @@
 #' Quantitative Analysis, parses all sample blocks, and aligns retention times
 #' (RTs) across samples using the first sample as the reference.
 #'
-#' @param file_path Character. Path to the Agilent MassHunter peak table file.
-#'   Although MassHunter labels the export as CSV, the file is tab-separated.
+#' @param file_path Character. Path to the Agilent MassHunter peak table CSV
+#'   file exported by MassHunter (comma-separated).
 #' @param rt_window Numeric. Maximum RT difference (in minutes) allowed between
 #'   a sample peak and a reference peak for them to be treated as the same
 #'   compound. Default is \code{0.4}.
@@ -36,7 +36,7 @@
 #' **File format.** The export contains one block of rows per sample, separated
 #' by blank lines. Each block starts with a sample-header row (containing
 #' \code{DAD} or \code{Sig=}), followed by a column-name row, then one row per
-#' detected peak. The first tab-delimited field of every row is the data-file
+#' detected peak. The first comma-delimited field of every row is the data-file
 #' path; the remaining fields hold the values described in the column-name row.
 #'
 #' **Sample name.** Extracted from the last whitespace-delimited token that ends
@@ -103,8 +103,8 @@ read_agilent_dad_peaks <- function(file_path, rt_window = 0.4) {
       next
     }
 
-    # All lines are tab-delimited; field 1 is always the data-file path
-    parts <- strsplit(line, "\t", fixed = TRUE)[[1]]
+    # All lines are comma-delimited; field 1 is always the data-file path
+    parts <- strsplit(line, ",", fixed = TRUE)[[1]]
     if (length(parts) < 2) next
     second <- trimws(parts[2])
 
@@ -143,7 +143,7 @@ read_agilent_dad_peaks <- function(file_path, rt_window = 0.4) {
   if (length(samples_raw) == 0) {
     stop(
       "No sample blocks found in '", file_path, "'. ",
-      "Ensure the file is a tab-delimited MassHunter UV-DAD peak table export."
+      "Ensure the file is a comma-separated MassHunter UV-DAD peak table export."
     )
   }
 
