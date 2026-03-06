@@ -339,6 +339,43 @@ result <- cielab_from_spectrum(spectra)
 
 ---
 
+### Agilent MassHunter UV-DAD Peak Table Functions
+
+#### `read_agilent_dad_peaks(file_path, rt_window)`
+
+Reads a UV-DAD peak table file exported by Agilent MassHunter Quantitative Analysis, parses all sample blocks, and aligns retention times (RTs) across samples using the first sample as the reference.
+
+**Parameters:**
+- `file_path` - Path to the Agilent MassHunter peak table file (tab-separated, despite the CSV label)
+- `rt_window` - Maximum RT difference in minutes allowed for two peaks to be matched as the same compound (default: `0.4`)
+
+**Output:** A wide-format data frame with one row per sample:
+- `SampleName` - Sample name extracted from the MassHunter header line
+- `Peak`*n*`_RT` - Retention time (min) of aligned peak *n*
+- `Peak`*n*`_Area` - Peak area of aligned peak *n*
+- `Peak`*n*`_Height` - Peak height of aligned peak *n*
+- `Peak`*n*`_AlignCV` - Coefficient of variation (%) of the RT pair; lower is better. `0` for the reference sample, `NA` for unmatched peaks
+
+Peaks not detected in a given sample are `NA` across all four columns.
+
+**Notes:**
+- The first sample in the file is used as the RT reference; subsequent samples are aligned to it
+- Alignment quality (AlignCV) is `CV% = SD(RT_ref, RT_sample) / mean(RT_ref, RT_sample) × 100`. Values below ~0.5% indicate excellent alignment; values above ~5% may warrant review
+- Sample names are extracted from the `.d` data file path in each block header (e.g. `10.PBDEAL_CTRL_RT_0M_2.d` → `10.PBDEAL_CTRL_RT_0M_2`)
+
+**Example:**
+```r
+library(PenguinoidRTools)
+
+# Basic usage
+df <- read_agilent_dad_peaks("data/polyphenols_peaktable.csv")
+
+# Tighter alignment window for isocratic runs with stable RT
+df <- read_agilent_dad_peaks("data/polyphenols_peaktable.csv", rt_window = 0.2)
+```
+
+---
+
 ## Dependencies
 
 ### For ANOVA functions
@@ -356,7 +393,7 @@ result <- cielab_from_spectrum(spectra)
 - colorspace
 - svglite (for SVG output only)
 
-### For data processing (`process_spectrum`)
+### For data processing (`process_spectrum`, `read_agilent_dad_peaks`)
 - Base R only (no additional packages required)
 
 ---
