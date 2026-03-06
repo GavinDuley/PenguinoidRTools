@@ -346,7 +346,7 @@ result <- cielab_from_spectrum(spectra)
 Reads a UV-DAD peak table file exported by Agilent MassHunter Quantitative Analysis, parses all sample blocks, and aligns retention times (RTs) across samples using the first sample as the reference.
 
 **Parameters:**
-- `file_path` - Path to the Agilent MassHunter peak table file (tab-separated, despite the CSV label)
+- `file_path` - Path to the Agilent MassHunter peak table CSV file (comma-separated)
 - `rt_window` - Maximum RT difference in minutes allowed for two peaks to be matched as the same compound (default: `0.4`)
 
 **Output:** A wide-format data frame with one row per sample:
