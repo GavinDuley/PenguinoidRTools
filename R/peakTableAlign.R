@@ -228,7 +228,7 @@ read_agilent_dad_peaks <- function(
 #' )
 #' }
 #'
-#' @importFrom stats sd mean
+#' @importFrom stats sd
 #' @export
 align_peaks_by_rt <- function(peaks_long, max_drift = 0.5) {
 
