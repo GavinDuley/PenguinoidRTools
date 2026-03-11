@@ -83,14 +83,21 @@ read_agilent_dad_peaks <- function(
 
   raw <- readLines(file_path, warn = FALSE)
 
-  # Auto-detect separator from the first non-blank line
-  if (is.null(sep)) {
-    first_line <- raw[which(nchar(trimws(raw)) > 0)[1]]
-    n_tab   <- nchar(first_line) - nchar(gsub("\t", "", first_line, fixed = TRUE))
-    n_comma <- nchar(first_line) - nchar(gsub(",",  "", first_line, fixed = TRUE))
-    sep <- if (n_tab >= n_comma) "\t" else ","
-    message(sprintf("Detected separator: %s", if (sep == "\t") "tab" else "comma"))
+  # Parse one CSV line into a character vector, handling quoted fields
+  # (including quoted fields that contain commas, as in "Sig=280,4").
+  parse_csv_line <- function(line) {
+    con <- textConnection(line)
+    on.exit(close(con))
+    tryCatch(
+      trimws(unlist(read.csv(con, header = FALSE, stringsAsFactors = FALSE,
+                             strip.white = TRUE, na.strings = ""))),
+      error = function(e) character(0)
+    )
   }
+
+  # --------------------------------------------------------------------------
+  # Step 1: Parse raw lines into a list of per-sample peak data frames
+  # --------------------------------------------------------------------------
 
   is_blank     <- function(x) grepl("^[\\t ,\"]*$", x, perl = TRUE)
   strip_quotes <- function(x) gsub('^"|"$', "", trimws(x))
@@ -120,9 +127,22 @@ read_agilent_dad_peaks <- function(
       next
     }
 
-    # Column-header line: second field equals the peak column name exactly.
-    if (length(fields) >= 2 && fields[2] == col_peak) {
-      col_idx <- setNames(seq_along(fields), fields)
+    # Parse as quoted CSV so that commas inside quoted fields are handled
+    # correctly (e.g. "Sig=280,4" in the sample-header line).
+    parts <- parse_csv_line(line)
+    if (length(parts) < 2) next
+    second <- parts[2]
+
+    # Sample-header line: second field contains "DAD" or "Sig="
+    if (grepl("DAD|Sig=", second, perl = TRUE)) {
+      flush_sample()
+      tokens <- strsplit(second, "\\s+")[[1]]
+      dot_d  <- grep("\\.d$", tokens, value = TRUE)
+      current_name <- if (length(dot_d) > 0) {
+        sub("\\.d$", "", tail(dot_d, 1))
+      } else {
+        second  # fallback: use the whole second field
+      }
       next
     }
 
@@ -134,15 +154,14 @@ read_agilent_dad_peaks <- function(
         if (col_name %in% names(col_idx)) fields[col_idx[[col_name]]] else NA_character_
       }
 
-      results[[length(results) + 1L]] <- data.frame(
-        sample = current_sample,
-        peak   = as.integer(get_field(col_peak)),
-        rt     = as.numeric(get_field(col_rt)),
-        height = as.numeric(get_field(col_height)),
-        area   = as.numeric(get_field(col_area)),
-        stringsAsFactors = FALSE
-      )
-    }
+    # Column order: filepath | Peak | Start | RT | End | Height | Area | ...
+    if (length(parts) < 7) next
+    current_peaks[[length(current_peaks) + 1]] <- c(
+      Peak   = second,
+      RT     = parts[4],
+      Height = parts[6],
+      Area   = parts[7]
+    )
   }
 
   if (length(results) == 0) {
