@@ -341,37 +341,77 @@ result <- cielab_from_spectrum(spectra)
 
 ### Agilent MassHunter UV-DAD Peak Table Functions
 
-#### `read_agilent_dad_peaks(file_path, rt_window)`
+#### `read_agilent_dad_peaks(file_path, sep, col_peak, col_rt, col_height, col_area)`
 
-Reads a UV-DAD peak table file exported by Agilent MassHunter Quantitative Analysis, parses all sample blocks, and aligns retention times (RTs) across samples using the first sample as the reference.
+Parses a multi-sample UV-DAD peak table exported from Agilent MassHunter Quantitative Analysis. Returns a long-format data frame with one row per detected peak per sample, ready to pass to `align_peaks_by_rt()`.
 
 **Parameters:**
-- `file_path` - Path to the Agilent MassHunter peak table CSV file (comma-separated)
-- `rt_window` - Maximum RT difference in minutes allowed for two peaks to be matched as the same compound (default: `0.4`)
+- `file_path` - Path to the exported CSV or tab-delimited file
+- `sep` - Field separator; `NULL` (default) auto-detects tab vs comma from the first non-blank line
+- `col_peak`, `col_rt`, `col_height`, `col_area` - Column names in the export header row (defaults: `"Peak"`, `"RT"`, `"Height"`, `"Area"`)
 
-**Output:** A wide-format data frame with one row per sample:
-- `SampleName` - Sample name extracted from the MassHunter header line
-- `Peak`*n*`_RT` - Retention time (min) of aligned peak *n*
-- `Peak`*n*`_Area` - Peak area of aligned peak *n*
-- `Peak`*n*`_Height` - Peak height of aligned peak *n*
-- `Peak`*n*`_AlignCV` - Coefficient of variation (%) of the RT pair; lower is better. `0` for the reference sample, `NA` for unmatched peaks
-
-Peaks not detected in a given sample are `NA` across all four columns.
+**Output:** A long-format data frame:
+- `sample` - Sample name (filename stem; path and `.d` suffix removed)
+- `peak` - Peak index as assigned by MassHunter (integer)
+- `rt` - Retention time (numeric, minutes)
+- `height` - Peak height
+- `area` - Peak area
 
 **Notes:**
-- The first sample in the file is used as the RT reference; subsequent samples are aligned to it
-- Alignment quality (AlignCV) is `CV% = SD(RT_ref, RT_sample) / mean(RT_ref, RT_sample) × 100`. Values below ~0.5% indicate excellent alignment; values above ~5% may warrant review
-- Sample names are extracted from the `.d` data file path in each block header (e.g. `10.PBDEAL_CTRL_RT_0M_2.d` → `10.PBDEAL_CTRL_RT_0M_2`)
+- Sample order in the output matches order of appearance in the file. The first sample is used as the alignment reference by `align_peaks_by_rt()`, so file order matters.
+- Column positions are read from the header row within each block, so the function is robust to exports with different column ordering or subsets.
+- Sample names are extracted from the text after `Ref=off` on each block's header line (e.g. `Ref=off 10.PBDEAL_CTRL_RT_0M_2.d` → `10.PBDEAL_CTRL_RT_0M_2`).
+
+---
+
+#### `align_peaks_by_rt(peaks_long, max_drift)`
+
+Aligns peaks across samples by matching each sample's peaks to the nearest RT in the reference sample (the first sample). Uses greedy one-to-one nearest-neighbour matching, flags ambiguous and unmatched peaks, and clusters peaks absent from the reference into new groups.
+
+**Parameters:**
+- `peaks_long` - Long-format data frame from `read_agilent_dad_peaks()`
+- `max_drift` - Maximum RT difference (minutes) for a valid match (default: `0.5`). Set generously — ambiguity flagging handles the hard cases. Check `result$drift_stats` to calibrate: if `max_abs_diff` is consistently under 0.1 min you can tighten it.
+
+**Output:** A named list with three elements:
+
+`$aligned` — Long-format table, one row per peak per sample:
+- `sample`, `peak`, `rt`, `height`, `area` — as parsed
+- `ref_rt` — RT of the matched reference peak
+- `rt_diff` — signed RT difference from reference (minutes)
+- `flag` — `"OK"`, `"UNMATCHED"`, or `"AMBIGUOUS"`
+- `flag_reason` — plain-English explanation for flagged rows
+
+`$summary` — One row per peak group (reference peaks + any new groups found only in non-reference samples):
+- `ref_rt`, `in_reference`, `mean_rt`, `sd_rt`, `cv_pct` — equivalent to the average/SD/CV% columns in a manual Excel alignment
+- `n_matched`, `n_ambiguous`, `n_missing` — counts per group
+
+`$drift_stats` — One row per sample:
+- `mean_rt_diff`, `sd_rt_diff`, `mean_abs_diff`, `max_abs_diff` — overall drift vs reference
+- `n_matched`, `n_ambiguous`, `n_missing` — peak counts
+
+**Flags:**
+- `AMBIGUOUS` — the RT difference to the matched reference peak is ≥ the spacing between that reference peak and its nearest neighbour. The assignment may be unreliable; manual review is recommended.
+- `UNMATCHED` — no reference peak within `max_drift`. In a second pass, unmatched peaks are clustered into new groups; samples without a peak in that group receive `NA`.
 
 **Example:**
 ```r
 library(PenguinoidRTools)
+library(tidyr)
 
-# Basic usage
-df <- read_agilent_dad_peaks("data/polyphenols_peaktable.csv")
+peaks_long <- read_agilent_dad_peaks("polyphenols_peaktable.csv")
+result     <- align_peaks_by_rt(peaks_long, max_drift = 0.25)
 
-# Tighter alignment window for isocratic runs with stable RT
-df <- read_agilent_dad_peaks("data/polyphenols_peaktable.csv", rt_window = 0.2)
+result$summary      # mean RT, SD, CV% per peak — equivalent to manual Excel workflow
+result$drift_stats  # per-sample drift vs reference — use to tune max_drift
+result$aligned      # full table with flags for review
+
+# Pivot to wide format
+area_wide <- pivot_wider(
+  result$aligned[!is.na(result$aligned$ref_rt), ],
+  id_cols     = ref_rt,
+  names_from  = sample,
+  values_from = area
+)
 ```
 
 ---
@@ -393,8 +433,12 @@ df <- read_agilent_dad_peaks("data/polyphenols_peaktable.csv", rt_window = 0.2)
 - colorspace
 - svglite (for SVG output only)
 
-### For data processing (`process_spectrum`, `read_agilent_dad_peaks`)
+### For data processing (`process_spectrum`)
 - Base R only (no additional packages required)
+
+### For Agilent MassHunter peak table functions (`read_agilent_dad_peaks`, `align_peaks_by_rt`)
+- Base R only for parsing and alignment
+- tidyr (>= 1.3.0) recommended for pivoting `$aligned` to wide format
 
 ---
 
