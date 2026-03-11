@@ -2,63 +2,85 @@
 % Please edit documentation in R/peakTableAlign.R
 \name{read_agilent_dad_peaks}
 \alias{read_agilent_dad_peaks}
-\title{Read and align an Agilent MassHunter UV-DAD peak table export}
+\title{Read an Agilent MassHunter UV-DAD peak table export}
 \usage{
-read_agilent_dad_peaks(file_path, rt_window = 0.4)
+read_agilent_dad_peaks(
+  file_path,
+  sep = NULL,
+  col_peak = "Peak",
+  col_rt = "RT",
+  col_height = "Height",
+  col_area = "Area"
+)
 }
 \arguments{
-\item{file_path}{Character. Path to the Agilent MassHunter peak table file.
-Although MassHunter labels the export as CSV, the file is tab-separated.}
+\item{file_path}{Character. Path to the exported CSV or tab-delimited file.}
 
-\item{rt_window}{Numeric. Maximum RT difference (in minutes) allowed between
-a sample peak and a reference peak for them to be treated as the same
-compound. Default is \code{0.4}.}
+\item{sep}{Character or \code{NULL}. Field separator. \code{NULL} (default)
+auto-detects tab vs comma from the first non-blank line.}
+
+\item{col_peak}{Character. Column name for the peak index in the export
+header row (default \code{"Peak"}).}
+
+\item{col_rt}{Character. Column name for retention time (default
+\code{"RT"}).}
+
+\item{col_height}{Character. Column name for peak height (default
+\code{"Height"}).}
+
+\item{col_area}{Character. Column name for peak area (default
+\code{"Area"}).}
 }
 \value{
-A wide-format data frame with one row per sample. Columns:
+A long-format data frame with one row per detected peak:
   \describe{
-    \item{SampleName}{Sample name extracted from the MassHunter header line.}
-    \item{Peak\emph{n}_RT}{Retention time (min) of aligned peak \emph{n}.}
-    \item{Peak\emph{n}_Area}{Peak area of aligned peak \emph{n}.}
-    \item{Peak\emph{n}_Height}{Peak height of aligned peak \emph{n}.}
-    \item{Peak\emph{n}_AlignCV}{Coefficient of variation (\%) of the RT pair
-      (reference RT, sample RT). Lower values indicate better alignment.
-      \code{0} for the reference sample; \code{NA} for unmatched peaks.}
+    \item{sample}{Sample name (filename stem; path and \code{.d} suffix
+      removed).}
+    \item{peak}{Peak index as assigned by MassHunter (integer).}
+    \item{rt}{Retention time (numeric, minutes).}
+    \item{height}{Peak height (numeric).}
+    \item{area}{Peak area (numeric).}
   }
-  Peaks not detected in a given sample are \code{NA} across all four columns.
+  Sample order in the output matches order of appearance in the file.
+  The first sample is used as the alignment reference by
+  \code{\link{align_peaks_by_rt}}, so file order matters.
 }
 \description{
-Reads a UV-DAD peak table CSV file exported by Agilent MassHunter
-Quantitative Analysis, parses all sample blocks, and aligns retention times
-(RTs) across samples using the first sample as the reference.
+Parses the multi-sample peak table file exported from Agilent MassHunter
+Quantitative Analysis for UV-DAD data. Returns a long-format data frame
+with one row per detected peak per sample, ready to pass to
+\code{\link{align_peaks_by_rt}}.
 }
 \details{
 \strong{File format.} The export contains one block of rows per sample, separated
-by blank lines. Each block starts with a sample-header row (containing
-\code{DAD} or \code{Sig=}), followed by a column-name row, then one row per
-detected peak. The first tab-delimited field of every row is the data-file
-path; the remaining fields hold the values described in the column-name row.
+by blank lines. Each block starts with a sample-header line (containing
+\code{DAD} and \code{Sig=}), followed by a column-name row, then one row per
+detected peak. The first field of every row is the data-file path.
 
-\strong{Sample name.} Extracted from the last whitespace-delimited token that ends
-in \code{.d} on the sample-header line, with the \code{.d} suffix removed.
-For example, \code{Ref=off 10.PBDEAL_CTRL_RT_0M_2.d} yields
+\strong{Separator auto-detection.} The first non-blank line is inspected; if it
+contains more tab characters than commas the file is treated as
+tab-delimited, otherwise as comma-separated. Override with \code{sep} if
+needed.
+
+\strong{Sample name.} Extracted from the text after \code{Ref=off} on the
+sample-header line, with the \code{.d} suffix removed. For example,
+\code{Ref=off 10.PBDEAL_CTRL_RT_0M_2.d} yields
 \code{10.PBDEAL_CTRL_RT_0M_2}.
 
-\strong{RT alignment.} The first sample's peaks are used as the reference. For
-each reference peak, the nearest unmatched peak in each subsequent sample
-within \code{rt_window} minutes is selected as its match. Alignment quality
-is reported as the coefficient of variation of the two RTs:
-\deqn{CV\% = \frac{SD(RT_{ref},\, RT_{sample})}{mean(RT_{ref},\, RT_{sample})} \times 100}
-Values below ~0.5\% indicate excellent alignment; values above ~5\% suggest
-the match may be unreliable and should be reviewed.
+\strong{Column positions.} The column-name row within each sample block is used
+to locate \code{col_rt}, \code{col_height}, and \code{col_area} by name,
+so the function is robust to exports with different column ordering or
+subsets.
 }
 \examples{
 \dontrun{
-# Basic usage
-df <- read_agilent_dad_peaks("data/polyphenols_peaktable.csv")
-
-# Tighter alignment window (e.g. isocratic runs with stable RT)
-df <- read_agilent_dad_peaks("data/polyphenols_peaktable.csv", rt_window = 0.2)
+peaks_long <- read_agilent_dad_peaks("polyphenols_peaktable.csv")
+result     <- align_peaks_by_rt(peaks_long, max_drift = 0.25)
+result$summary      # mean RT, SD, CV\% per peak group
+result$drift_stats  # per-sample drift vs reference
 }
 
+}
+\seealso{
+\code{\link{align_peaks_by_rt}}
 }
