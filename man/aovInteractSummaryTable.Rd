@@ -13,47 +13,22 @@ aovInteractSummaryTable(
 )
 }
 \arguments{
-\item{aov_data}{The data frame containing the data to be analysed.}
+\item{aov_data}{The data frame containing the data.}
 
-\item{group_vars}{A vector of column names containing the group names (in quotes). If multiple group variables are provided, interactions will be considered.}
+\item{group_vars}{A vector of column names containing the grouping variables.}
 
-\item{output_file}{If a file name is supplied (in quotes), it will output an Excel file with the summary table. The filename should have an .xlsx extension.}
+\item{output_file}{Optional file name (with .xlsx extension) to save the table.}
 
-\item{return_raw}{Logical. If TRUE, assigns a list with raw ANOVA and Tukey test outputs to the specified object. Default is FALSE.}
+\item{return_raw}{Logical; if TRUE, raw outputs are assigned to a global variable.}
 
-\item{output_name}{The name of the list object to store raw ANOVA and Tukey results. Default is "aov_results".}
+\item{output_name}{The name of the global variable to store raw outputs.}
 }
 \value{
-Returns a summary table and (optionally) saves it as an Excel file in the active directory. If `return_raw` is TRUE, also assigns a list with raw ANOVA and Tukey test outputs.
+A data frame summary table.
 }
 \description{
-This allows you to generate a table of means and key statistical
- values from an analysis of variance (AoV) test for a whole dataframe. 
- It uses the agricolae, dplyr, gtools, and openxlsx packages.\cr
- Please convert any non-numeric columns to factors before using this function.
- Ideally, factor columns should be the first few columns in the data frame.\cr
- It handles interactions among multiple group variables. \cr
- NB, BH = Benjamini-Hochberg (FDR) Correction
-}
-\examples{
-# Load the necessary package
-library(agricolae)
-
-# Load the greenhouse dataset
-data(greenhouse, package = "agricolae")
-
-# Extract the greenhouse1 data
-aov_data <- greenhouse$greenhouse1
-
-# Run the aovInteractSummaryTable function
-result <- aovInteractSummaryTable(
-  aov_data = aov_data, 
-  group_vars = c("variety", "method"), 
-  output_file = NULL, 
-  return_raw = TRUE, 
-  output_name = "aov_results"
-)
-
-# Print the result (the summary table)
-print(result)
+This function generates a table of means and key statistical
+ values from an ANOVA that includes interactions among multiple grouping variables.
+ It also appends BH-corrected p-values and significance as additional rows.
+ A "Type" column is added so that the row labels export correctly to Excel.
 }

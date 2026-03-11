@@ -52,22 +52,22 @@ with one row per detected peak per sample, ready to pass to
 \code{\link{align_peaks_by_rt}}.
 }
 \details{
-\strong{File format.} The export contains one block of rows per sample, separated
+**File format.** The export contains one block of rows per sample, separated
 by blank lines. Each block starts with a sample-header line (containing
 \code{DAD} and \code{Sig=}), followed by a column-name row, then one row per
 detected peak. The first field of every row is the data-file path.
 
-\strong{Separator auto-detection.} The first non-blank line is inspected; if it
+**Separator auto-detection.** The first non-blank line is inspected; if it
 contains more tab characters than commas the file is treated as
 tab-delimited, otherwise as comma-separated. Override with \code{sep} if
 needed.
 
-\strong{Sample name.} Extracted from the text after \code{Ref=off} on the
+**Sample name.** Extracted from the text after \code{Ref=off} on the
 sample-header line, with the \code{.d} suffix removed. For example,
 \code{Ref=off 10.PBDEAL_CTRL_RT_0M_2.d} yields
 \code{10.PBDEAL_CTRL_RT_0M_2}.
 
-\strong{Column positions.} The column-name row within each sample block is used
+**Column positions.** The column-name row within each sample block is used
 to locate \code{col_rt}, \code{col_height}, and \code{col_area} by name,
 so the function is robust to exports with different column ordering or
 subsets.

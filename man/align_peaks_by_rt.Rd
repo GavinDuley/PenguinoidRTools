@@ -40,16 +40,16 @@ peaks, and clusters unmatched peaks into new groups for peaks absent from
 the reference.
 }
 \details{
-\strong{Matching.} For each sample, all pairwise absolute RT differences within
+**Matching.** For each sample, all pairwise absolute RT differences within
 \code{max_drift} are computed. Pairs are then assigned greedily from closest
 to furthest, with each reference peak and each sample peak used at most once.
 
-\strong{Ambiguity flag.} A match is flagged \code{AMBIGUOUS} when the absolute RT
+**Ambiguity flag.** A match is flagged \code{AMBIGUOUS} when the absolute RT
 difference equals or exceeds the spacing between the matched reference peak
 and its nearest neighbouring reference peak. This indicates the assignment
 may be unreliable and warrants manual review.
 
-\strong{Unmatched peaks.} Sample peaks with no reference peak within
+**Unmatched peaks.** Sample peaks with no reference peak within
 \code{max_drift} are flagged \code{UNMATCHED}. In a second pass these are
 clustered by RT proximity into new peak groups (peaks genuine to
 non-reference samples). Each group is assigned a representative \code{ref_rt}
