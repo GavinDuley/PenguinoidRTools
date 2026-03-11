@@ -319,8 +319,8 @@ aovInteractSummaryTable <- function(aov_data,
           bh_corr_row <- c(bh_corr_row, paste0(signif(bh_val, digits = 4), " ", stars.pval(bh_val)))
           bh_sig_row <- c(bh_sig_row, ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
         } else {
-          bh_corr_row <- c(bh_corr_row, "N/A")
-          bh_sig_row <- c(bh_sig_row, "N/A")
+          bh_corr_row <- c(bh_corr_row, "INVARIANT")
+          bh_sig_row <- c(bh_sig_row, "INVARIANT")
         }
       }
 
