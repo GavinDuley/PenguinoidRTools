@@ -190,12 +190,13 @@ delta_h_signed(350, 10)   # Returns -20
 
 Calculate CIE76 colour difference (Delta E) between two colours.
 
-**Delta E interpretation:**
-- 0-1: Not perceptible by human eye
+**Delta E interpretation (rough):**
+- < 1: Generally not perceptible to the human eye
 - 1-2: Perceptible through close observation
-- 2-10: Perceptible at a glance
-- 11-49: Colours are more similar than opposite
-- 100: Colours are exact opposites
+- > 2: Increasingly perceptible at a glance
+
+CIE76 Delta E is unbounded and not perceptually uniform; for perceptually
+uniform differences use the CIE2000 method (`calc_pairwise_dE(..., method = "CIE2000")`).
 
 **Example:**
 ```r
