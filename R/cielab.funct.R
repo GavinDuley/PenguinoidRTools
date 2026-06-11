@@ -451,6 +451,106 @@ deltaE76 <- function(L1, a1, b1, L2, a2, b2) {
   sqrt((L2 - L1)^2 + (a2 - a1)^2 + (b2 - b1)^2)
 }
 
+# Internal: element-wise Delta E between two sets of Lab colours using a
+# farver method ("cie2000" or "cie94"). Arguments are recycled to a common
+# length and compared pairwise (row i of colour 1 vs row i of colour 2).
+.deltaE_farver <- function(L1, a1, b1, L2, a2, b2, method) {
+  if (!requireNamespace("farver", quietly = TRUE)) {
+    stop("Package 'farver' is required. Install with: install.packages('farver')")
+  }
+  n <- max(lengths(list(L1, a1, b1, L2, a2, b2)))
+  from <- matrix(c(rep_len(L1, n), rep_len(a1, n), rep_len(b1, n)), ncol = 3)
+  to   <- matrix(c(rep_len(L2, n), rep_len(a2, n), rep_len(b2, n)), ncol = 3)
+  vapply(seq_len(n), function(i) {
+    farver::compare_colour(from[i, , drop = FALSE], to[i, , drop = FALSE],
+                           from_space = "lab", method = method)[1]
+  }, numeric(1))
+}
+
+#' Calculate CIE2000 colour difference (Delta E 2000)
+#'
+#' Computes the CIE2000 colour difference between two colours in CIELab space.
+#' CIE2000 is the current recommendation for perceptually uniform colour
+#' differences, improving on CIE76 and CIE94.
+#'
+#' @param L1,a1,b1 CIELab coordinates of first colour
+#' @param L2,a2,b2 CIELab coordinates of second colour
+#' @return Numeric Delta E 2000 value(s). Arguments are recycled to a common
+#'   length and compared pairwise.
+#'
+#' @details Like all Delta E metrics, this is a distance between two colours,
+#'   so it always requires a pair of colour coordinates. The calculation is
+#'   delegated to \code{farver::compare_colour()}.
+#'
+#' @seealso \code{\link{deltaE76}}, \code{\link{deltaE94}}
+#'
+#' @examples
+#' \dontrun{
+#' deltaE00(50, 10, 20, 55, 15, 25)
+#' }
+#'
+#' @importFrom farver compare_colour
+#' @export
+deltaE00 <- function(L1, a1, b1, L2, a2, b2) {
+  .deltaE_farver(L1, a1, b1, L2, a2, b2, method = "cie2000")
+}
+
+#' Calculate CIE94 colour difference (Delta E 94)
+#'
+#' Computes the CIE94 colour difference between two colours in CIELab space.
+#' CIE94 improves on CIE76 by weighting chroma and hue differences, and sits
+#' between CIE76 and CIE2000 in complexity.
+#'
+#' @param L1,a1,b1 CIELab coordinates of first colour
+#' @param L2,a2,b2 CIELab coordinates of second colour
+#' @return Numeric Delta E 94 value(s). Arguments are recycled to a common
+#'   length and compared pairwise.
+#'
+#' @details Like all Delta E metrics, this is a distance between two colours,
+#'   so it always requires a pair of colour coordinates. The calculation is
+#'   delegated to \code{farver::compare_colour()}.
+#'
+#' @seealso \code{\link{deltaE76}}, \code{\link{deltaE00}}
+#'
+#' @examples
+#' \dontrun{
+#' deltaE94(50, 10, 20, 55, 15, 25)
+#' }
+#'
+#' @importFrom farver compare_colour
+#' @export
+deltaE94 <- function(L1, a1, b1, L2, a2, b2) {
+  .deltaE_farver(L1, a1, b1, L2, a2, b2, method = "cie94")
+}
+
+#' Convert CIELab coordinates to hex colour strings
+#'
+#' Converts CIELab L*, a*, b* coordinates to hexadecimal sRGB colour strings,
+#' e.g. for plotting or building swatches.
+#'
+#' @param L Numeric L* value(s) (0-100)
+#' @param a Numeric a* value(s)
+#' @param b Numeric b* value(s)
+#' @param fixup Logical; if TRUE (default), colours outside the sRGB gamut are
+#'   clipped to the nearest representable colour rather than returned as NA.
+#' @return Character vector of hex colour strings (e.g. "#A03C2F").
+#'
+#' @details Requires the \pkg{colorspace} package.
+#'
+#' @examples
+#' \dontrun{
+#' cielab_to_hex(50, 40, 30)
+#' cielab_to_hex(c(30, 90), c(50, -5), c(30, 10))
+#' }
+#'
+#' @export
+cielab_to_hex <- function(L, a, b, fixup = TRUE) {
+  if (!requireNamespace("colorspace", quietly = TRUE)) {
+    stop("Package 'colorspace' is required. Install with: install.packages('colorspace')")
+  }
+  colorspace::hex(colorspace::LAB(L, a, b), fixup = fixup)
+}
+
 #' Calculate centroid-to-centroid colour differences
 #'
 #' Computes colour differences between group centroids in CIELab space.
@@ -739,6 +839,226 @@ calc_pairwise_dE <- function(data,
   return(results)
 }
 
+#' Calculate colour change over time (kinetics)
+#'
+#' Tracks how wine colour changes across an ordered series of timepoints by
+#' computing colour differences between group centroids. For each combination
+#' of grouping variables (e.g. wine and treatment), the mean L*, a*, b* is
+#' calculated at each timepoint, and colour differences (dL, dC, dh, dE76,
+#' dE00) are reported either relative to the first timepoint (baseline),
+#' between consecutive timepoints (step-wise), or both.
+#'
+#' @param data A data.frame containing CIELab colour data with columns
+#'   \code{CIELab_L}, \code{CIELab_a}, and \code{CIELab_b}.
+#' @param time_col Character name of the column giving the timepoint. May be
+#'   numeric or a factor/character. See \code{time_levels} for how ordering is
+#'   determined.
+#' @param group_by Character vector of column names identifying each colour
+#'   series (e.g. \code{c("Wine", "Treatment")}). Kinetics are computed
+#'   separately within each group. NULL treats all rows as a single series.
+#' @param comparison Character; which differences to compute. One of
+#'   \code{"both"} (default), \code{"baseline"} (every timepoint vs the first),
+#'   or \code{"consecutive"} (each timepoint vs the previous one).
+#' @param time_levels Optional character/numeric vector giving the timepoints
+#'   in chronological order. If NULL (default), the order is taken from: the
+#'   numeric values (if \code{time_col} is numeric); the factor levels (if
+#'   \code{time_col} is a factor); otherwise a number parsed from each label
+#'   (e.g. "0M", "3M", "12M" -> 0, 3, 12), falling back to order of appearance
+#'   with a message if no number can be parsed.
+#'
+#' @return A data.frame with one row per comparison, containing:
+#'   \describe{
+#'     \item{<group_by columns>}{Grouping variables (if specified)}
+#'     \item{comparison_type}{"baseline" or "consecutive"}
+#'     \item{from_time, to_time}{The two timepoints compared}
+#'     \item{contrast}{Character label, e.g. "3M - 0M"}
+#'     \item{n_from, n_to}{Number of observations averaged at each timepoint}
+#'     \item{dL}{Difference in L* (lightness)}
+#'     \item{dC}{Difference in C* (chroma)}
+#'     \item{dh}{Signed difference in hue angle (degrees)}
+#'     \item{dE76}{CIE76 Delta E between the two centroids}
+#'     \item{dE00}{CIE2000 Delta E between the two centroids}
+#'   }
+#'   Differences are expressed as (later timepoint - earlier timepoint), so a
+#'   positive \code{dL} means the wine got lighter over time.
+#'
+#' @details
+#' This is a time-ordered companion to \code{\link{calc_colour_diff}}: rather
+#' than comparing every level to a single reference, it walks an ordered series
+#' of timepoints. Use \code{comparison = "baseline"} to see cumulative change
+#' from the start, \code{"consecutive"} to see the rate of change between
+#' successive measurements, or \code{"both"} for the two stacked together.
+#'
+#' The function requires the \pkg{farver} package for CIE2000 calculations.
+#'
+#' @seealso \code{\link{calc_colour_diff}}, \code{\link{deltaE00}}
+#'
+#' @examples
+#' \dontrun{
+#' # Colour change of each wine x treatment over storage time
+#' kin <- cielab_kinetics(
+#'   data = wine_colours,
+#'   time_col = "Months",
+#'   group_by = c("Wine", "Treatment")
+#' )
+#'
+#' # Only cumulative change from the first timepoint
+#' kin <- cielab_kinetics(wine_colours, "Months", comparison = "baseline")
+#' }
+#'
+#' @importFrom farver compare_colour
+#' @export
+cielab_kinetics <- function(data,
+                            time_col,
+                            group_by = NULL,
+                            comparison = c("both", "baseline", "consecutive"),
+                            time_levels = NULL) {
+
+  comparison <- match.arg(comparison)
+
+  required_cols <- c(time_col, group_by, "CIELab_L", "CIELab_a", "CIELab_b")
+  missing_cols <- setdiff(required_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+
+  # Determine the chronological order of the timepoints.
+  ordered_times <- .order_timepoints(data[[time_col]], time_levels)
+  if (length(ordered_times) < 2) {
+    stop("Need at least two distinct timepoints in '", time_col, "'.")
+  }
+
+  # Centroid (mean L*, a*, b*) and observation count per group x timepoint.
+  group_vars <- c(group_by, time_col)
+  centroids <- data %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_vars))) %>%
+    dplyr::summarise(
+      n = dplyr::n(),
+      L = mean(CIELab_L),
+      a = mean(CIELab_a),
+      b = mean(CIELab_b),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      C = lab_to_C(a, b),
+      h = hue_deg(a, b),
+      .time_chr = as.character(.data[[time_col]])
+    )
+
+  # Split into one colour series per group, preserving group key values.
+  if (is.null(group_by)) {
+    series_list <- list(centroids)
+    group_keys <- list(NULL)
+  } else {
+    split_keys <- interaction(centroids[group_by], drop = TRUE, lex.order = TRUE)
+    series_list <- split(centroids, split_keys)
+    group_keys <- lapply(series_list, function(s) s[1, group_by, drop = FALSE])
+  }
+
+  build_pair <- function(series, type, from_t, to_t) {
+    r1 <- series[series$.time_chr == from_t, ]
+    r2 <- series[series$.time_chr == to_t, ]
+    if (nrow(r1) == 0 || nrow(r2) == 0) return(NULL)  # timepoint absent here
+    data.frame(
+      comparison_type = type,
+      from_time = from_t,
+      to_time = to_t,
+      contrast = paste(to_t, "–", from_t),
+      n_from = r1$n,
+      n_to = r2$n,
+      dL = r2$L - r1$L,
+      dC = r2$C - r1$C,
+      dh = delta_h_signed(r2$h, r1$h),
+      dE76 = deltaE76(r1$L, r1$a, r1$b, r2$L, r2$a, r2$b),
+      dE00 = deltaE00(r1$L, r1$a, r1$b, r2$L, r2$a, r2$b),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  results <- list()
+  for (i in seq_along(series_list)) {
+    series <- series_list[[i]]
+    present <- intersect(ordered_times, series$.time_chr)
+    if (length(present) < 2) next  # not enough timepoints in this group
+
+    rows <- list()
+    if (comparison %in% c("both", "baseline")) {
+      baseline_t <- present[1]
+      for (t in present[-1]) {
+        rows[[length(rows) + 1]] <- build_pair(series, "baseline", baseline_t, t)
+      }
+    }
+    if (comparison %in% c("both", "consecutive")) {
+      for (j in seq_len(length(present) - 1)) {
+        rows[[length(rows) + 1]] <- build_pair(series, "consecutive",
+                                               present[j], present[j + 1])
+      }
+    }
+
+    group_rows <- do.call(rbind, rows)
+    if (is.null(group_rows)) next
+    if (!is.null(group_by)) {
+      group_rows <- cbind(group_keys[[i]][rep(1, nrow(group_rows)), , drop = FALSE],
+                          group_rows, row.names = NULL)
+    }
+    results[[length(results) + 1]] <- group_rows
+  }
+
+  if (length(results) == 0) {
+    warning("No group had at least two of the requested timepoints; ",
+            "returning an empty table.")
+  }
+
+  out <- do.call(rbind, results)
+  rownames(out) <- NULL
+  out
+}
+
+# Internal: return the unique timepoints of `tvals` in chronological order.
+# Priority: explicit `levels_arg`; numeric column; *ordered* factor levels
+# (a deliberate ordering); a number parsed from each label (e.g. "3M" -> 3,
+# which beats the alphabetical levels of a default factor); finally an
+# unordered factor's levels or order of appearance, with a message.
+.order_timepoints <- function(tvals, levels_arg = NULL) {
+  present <- unique(as.character(tvals))
+
+  if (!is.null(levels_arg)) {
+    ordered <- as.character(levels_arg)
+    extra <- setdiff(present, ordered)
+    if (length(extra) > 0) {
+      warning("time_levels does not include: ", paste(extra, collapse = ", "),
+              "; these timepoints will be dropped.")
+    }
+    return(ordered[ordered %in% present])
+  }
+
+  if (is.numeric(tvals)) {
+    return(as.character(sort(unique(tvals))))
+  }
+
+  if (is.ordered(tvals)) {
+    return(levels(droplevels(tvals)))
+  }
+
+  # Try to parse a number from each label (e.g. "3M" -> 3). This is preferred
+  # over an unordered factor's levels, which are alphabetical ("0M","12M","3M").
+  m <- regexpr("[0-9]+\\.?[0-9]*", present)
+  if (all(m != -1)) {
+    parsed <- as.numeric(regmatches(present, m))
+    return(present[order(parsed)])
+  }
+
+  if (is.factor(tvals)) {
+    message("Timepoint labels are not numeric; ordering by factor levels. ",
+            "Pass time_levels (or use an ordered factor) to set the order.")
+    return(levels(droplevels(tvals)))
+  }
+
+  message("Could not parse numeric timepoints; ordering by first appearance. ",
+          "Pass time_levels to set the order explicitly.")
+  present
+}
+
 # ==============================================================================
 # Visualization Functions
 # ==============================================================================
@@ -831,10 +1151,7 @@ cielab_swatch <- function(CIELab,
   df <- data.frame(
     idx = seq_len(n),
     label = as.character(CIELab$WineName),
-    hex = colorspace::hex(
-      colorspace::LAB(CIELab$CIELab_L, CIELab$CIELab_a, CIELab$CIELab_b),
-      fixup = TRUE
-    ),
+    hex = cielab_to_hex(CIELab$CIELab_L, CIELab$CIELab_a, CIELab$CIELab_b),
     label_col = ifelse(CIELab$CIELab_L > 60, "black", "white"),
     stringsAsFactors = FALSE
   )

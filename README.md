@@ -203,6 +203,26 @@ uniform differences use the CIE2000 method (`calc_pairwise_dE(..., method = "CIE
 deltaE76(50, 10, 20, 55, 15, 25)
 ```
 
+#### `deltaE00(L1, a1, b1, L2, a2, b2)` / `deltaE94(L1, a1, b1, L2, a2, b2)`
+
+Standalone CIE2000 and CIE94 colour differences between two colours, as peers of `deltaE76()`. Arguments are recycled to a common length and compared pairwise. Both delegate to `farver::compare_colour()`. Like all Delta E metrics, these always compare a *pair* of colours.
+
+**Example:**
+```r
+deltaE00(50, 10, 20, 55, 15, 25)
+deltaE94(50, 10, 20, 55, 15, 25)
+```
+
+#### `cielab_to_hex(L, a, b, fixup = TRUE)`
+
+Convert CIELab coordinates to hexadecimal sRGB colour strings (e.g. for plotting). Requires the `colorspace` package.
+
+**Example:**
+```r
+cielab_to_hex(c(30, 90), c(50, -5), c(30, 10))
+# Returns e.g. c("#8F0F1B", "#E1E5CF")
+```
+
 #### `calc_colour_diff(data, compare_by, reference_level, group_by)`
 
 Calculate centroid-to-centroid colour differences between groups. Computes the mean L*, a*, b* for each group and returns differences (dL, dC, dh, dE76, dE00) relative to a reference level.
@@ -280,6 +300,32 @@ results <- calc_pairwise_dE(
   reference_level = "Control",
   target_levels = c("Low", "High")
 )
+```
+
+#### `cielab_kinetics(data, time_col, group_by, comparison, time_levels)`
+
+Tracks how wine colour changes across an ordered series of timepoints. For each combination of grouping variables (e.g. wine and treatment), it computes the centroid (mean L\*, a\*, b\*) at each timepoint and reports colour differences relative to the first timepoint (`"baseline"`), between consecutive timepoints (`"consecutive"`), or `"both"` (default). A time-ordered companion to `calc_colour_diff()`.
+
+**Parameters:**
+- `data` - Data frame with `CIELab_L`, `CIELab_a`, `CIELab_b` columns
+- `time_col` - Column giving the timepoint. Numeric, ordered factor, or labels with embedded numbers (e.g. `"0M"`, `"3M"`, `"12M"`) are ordered chronologically automatically; for an unordered factor with non-numeric labels, pass `time_levels`.
+- `group_by` - Column(s) identifying each colour series (e.g. `c("Wine", "Treatment")`); NULL treats all rows as one series
+- `comparison` - `"both"` (default), `"baseline"`, or `"consecutive"`
+- `time_levels` - Optional explicit chronological order of timepoints
+
+**Output:** A data.frame with `comparison_type`, `from_time`, `to_time`, `contrast`, `n_from`, `n_to`, and the colour differences `dL`, `dC`, `dh`, `dE76`, `dE00`. Differences are (later − earlier), so positive `dL` means the wine lightened over time.
+
+**Example:**
+```r
+# Colour change of each wine x treatment over storage time
+kin <- cielab_kinetics(
+  data = wine_colours,
+  time_col = "Months",
+  group_by = c("Wine", "Treatment")
+)
+
+# Only cumulative change from the first timepoint
+kin <- cielab_kinetics(wine_colours, "Months", comparison = "baseline")
 ```
 
 #### `cielab_swatch(CIELab, file, ...)`
