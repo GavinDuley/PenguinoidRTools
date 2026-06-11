@@ -266,6 +266,39 @@ test_that("cielab_from_spectrum errors on invalid data format", {
   )
 })
 
+test_that("calc_colour_diff and calc_pairwise_dE validate the reference level", {
+  lab_data <- data.frame(
+    EtOH = rep(c("CTRL", "T1"), each = 3),
+    Wine = rep(c("W1", "W2", "W1"), 2),
+    CIELab_L = c(50, 52, 51, 60, 61, 59),
+    CIELab_a = c(10, 11, 9, 15, 14, 16),
+    CIELab_b = c(5, 6, 4, 8, 7, 9)
+  )
+
+  expect_error(
+    calc_colour_diff(lab_data, reference_level = "MISSING"),
+    "Reference level 'MISSING' not found"
+  )
+  expect_error(
+    calc_pairwise_dE(lab_data, reference_level = "MISSING"),
+    "Reference level 'MISSING' not found"
+  )
+  expect_error(
+    calc_pairwise_dE(lab_data, target_levels = "NOPE"),
+    "Target level\\(s\\) not found"
+  )
+
+  # Groups with no reference observations produce a warning rather than silent NAs
+  no_ref_group <- rbind(
+    cbind(lab_data, Grp = "A"),
+    cbind(lab_data[lab_data$EtOH != "CTRL", ], Grp = "B")
+  )
+  expect_warning(
+    calc_colour_diff(no_ref_group, group_by = "Grp"),
+    "no 'CTRL' observations"
+  )
+})
+
 test_that("cielab_from_spectrum warns on percentage values", {
   wine_data <- generate_wine_spectra()
   # Convert to percentages (0-100)

@@ -81,13 +81,13 @@ cielab_spectroscopy_percentage_to_fraction <- function(transmission_pct) {
 #' Internal: Calculate CIELab for a single spectrum
 #'
 #' @param lambda Numeric vector of wavelengths (nm)
-#' @param T Numeric vector of transmittance values (fraction 0-1)
+#' @param transmittance Numeric vector of transmittance values (fraction 0-1)
 #' @param path_mm Numeric path length in mm
 #' @return List with L, a, b, C, H values
 #' @keywords internal
-.cielab_single <- function(lambda, T, path_mm) {
+.cielab_single <- function(lambda, transmittance, path_mm) {
   # Express transmittance at 10 mm path length
-  T10 <- .to_T10(T, path_mm)
+  T10 <- .to_T10(transmittance, path_mm)
 
   # Resample to the OIV method's 5 nm grid by averaging within +/- 2 nm
   grid <- .oiv_coefficients$lambda
@@ -268,15 +268,14 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
       stop("No wavelength columns found in 380-780 nm range")
     }
 
-    # Pivot to long format
-    data_long <- do.call(rbind, lapply(seq_len(nrow(data)), function(i) {
-      data.frame(
-        .sample_id = as.character(data[[sample_col]][i]),
-        lambda = wavelengths,
-        T = as.numeric(data[i, wave_cols]),
-        stringsAsFactors = FALSE
-      )
-    }))
+    # Pivot to long format: one row per (sample, wavelength). Transposing the
+    # wavelength matrix flattens it sample-by-sample, matching the rep() calls.
+    data_long <- data.frame(
+      .sample_id = rep(as.character(data[[sample_col]]), each = length(wave_cols)),
+      lambda = rep(wavelengths, times = nrow(data)),
+      T = as.numeric(t(as.matrix(data[wave_cols]))),
+      stringsAsFactors = FALSE
+    )
   } else {
     # Already long format
     data_long <- data.frame(
@@ -406,14 +405,15 @@ delta_h_signed <- function(h2, h1) {
 #' @return Numeric Delta E value(s)
 #'
 #' @details
-#' Interpretation of Delta E values:
+#' Rough interpretation of Delta E values:
 #' \itemize{
-#'   \item 0-1: Not perceptible by human eye
+#'   \item < 1: Generally not perceptible to the human eye
 #'   \item 1-2: Perceptible through close observation
-#'   \item 2-10: Perceptible at a glance
-#'   \item 11-49: Colours are more similar than opposite
-#'   \item 100: Colours are exact opposites
+#'   \item > 2: Increasingly perceptible at a glance
 #' }
+#' Note that CIE76 Delta E is unbounded and not perceptually uniform;
+#' for perceptually uniform differences use the CIE2000 formula
+#' (see \code{\link{calc_pairwise_dE}} with \code{method = "CIE2000"}).
 #'
 #' @examples
 #' deltaE76(50, 10, 20, 55, 15, 25)
@@ -487,6 +487,14 @@ calc_colour_diff <- function(data,
                             reference_level = "CTRL",
                             group_by = NULL) {
 
+  if (!compare_by %in% names(data)) {
+    stop("Column '", compare_by, "' not found in data")
+  }
+  if (!reference_level %in% data[[compare_by]]) {
+    stop("Reference level '", reference_level, "' not found in column '",
+         compare_by, "'")
+  }
+
   # Build grouping variables
   group_vars <- c(group_by, compare_by)
 
@@ -508,25 +516,35 @@ calc_colour_diff <- function(data,
   ref_centroids <- centroids %>%
     dplyr::filter(.data[[compare_by]] == reference_level)
 
+  # Attach the matching reference centroid to each non-reference centroid
+  non_ref <- centroids %>%
+    dplyr::filter(.data[[compare_by]] != reference_level)
+
+  if (!is.null(group_by)) {
+    joined <- dplyr::left_join(
+      non_ref,
+      ref_centroids %>%
+        dplyr::select(dplyr::all_of(c(group_by, "L", "a", "b", "C", "h"))) %>%
+        dplyr::rename_with(~ paste0(.x, "_ref"), dplyr::all_of(c("L", "a", "b", "C", "h"))),
+      by = group_by
+    )
+    if (any(is.na(joined$L_ref))) {
+      warning("Some groups have no '", reference_level, "' observations; ",
+              "their colour differences will be NA.")
+    }
+  } else {
+    joined <- non_ref %>%
+      dplyr::mutate(
+        L_ref = ref_centroids$L[1],
+        a_ref = ref_centroids$a[1],
+        b_ref = ref_centroids$b[1],
+        C_ref = ref_centroids$C[1],
+        h_ref = ref_centroids$h[1]
+      )
+  }
+
   # Calculate differences for non-reference levels
-  results <- centroids %>%
-    dplyr::filter(.data[[compare_by]] != reference_level) %>%
-    {
-      if (!is.null(group_by)) {
-        dplyr::left_join(.,
-                  ref_centroids %>%
-                    dplyr::select(dplyr::all_of(c(group_by, "L", "a", "b", "C", "h"))),
-                  by = group_by,
-                  suffix = c("", "_ref"))
-      } else {
-        dplyr::mutate(.,
-               L_ref = ref_centroids$L[1],
-               a_ref = ref_centroids$a[1],
-               b_ref = ref_centroids$b[1],
-               C_ref = ref_centroids$C[1],
-               h_ref = ref_centroids$h[1])
-      }
-    } %>%
+  results <- joined %>%
     dplyr::rowwise() %>%
     dplyr::mutate(
       contrast = paste(.data[[compare_by]], "\u2013", reference_level),
@@ -621,8 +639,22 @@ calc_pairwise_dE <- function(data,
                              group_by = NULL,
                              method = "CIE1976") {
 
+  if (!compare_by %in% names(data)) {
+    stop("Column '", compare_by, "' not found in data")
+  }
+  if (!reference_level %in% data[[compare_by]]) {
+    stop("Reference level '", reference_level, "' not found in column '",
+         compare_by, "'")
+  }
+
   if (is.null(target_levels)) {
     target_levels <- setdiff(unique(data[[compare_by]]), reference_level)
+  } else {
+    missing_levels <- setdiff(target_levels, unique(data[[compare_by]]))
+    if (length(missing_levels) > 0) {
+      stop("Target level(s) not found in column '", compare_by, "': ",
+           paste(missing_levels, collapse = ", "))
+    }
   }
 
   # Prepare reference data
@@ -662,8 +694,11 @@ calc_pairwise_dE <- function(data,
         )
     }
 
+    if (!is.null(group_by)) {
+      crossed <- dplyr::group_by(crossed, dplyr::across(dplyr::all_of(group_by)))
+    }
+
     crossed %>%
-      {if (!is.null(group_by)) dplyr::group_by(., dplyr::across(dplyr::all_of(group_by))) else .} %>%
       dplyr::summarise(
         comparison = paste(target, "\u2013", reference_level),
         dE_mean = mean(dE),

@@ -4,12 +4,12 @@
 \alias{.cielab_single}
 \title{Internal: Calculate CIELab for a single spectrum}
 \usage{
-.cielab_single(lambda, T, path_mm)
+.cielab_single(lambda, transmittance, path_mm)
 }
 \arguments{
 \item{lambda}{Numeric vector of wavelengths (nm)}
 
-\item{T}{Numeric vector of transmittance values (fraction 0-1)}
+\item{transmittance}{Numeric vector of transmittance values (fraction 0-1)}
 
 \item{path_mm}{Numeric path length in mm}
 }

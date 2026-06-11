@@ -30,5 +30,8 @@ A data frame summary table.
 This function generates a table of means and key statistical
  values from an ANOVA that includes interactions among multiple grouping variables.
  It also appends BH-corrected p-values and significance as additional rows.
- A "Type" column is added so that the row labels export correctly to Excel.
+ The BH correction is applied separately within each effect family (i.e. all
+ p-values for a given main effect or interaction are corrected together,
+ across variables). A "Type" column is added so that the row labels export
+ correctly to Excel.
 }
