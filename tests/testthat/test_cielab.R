@@ -266,6 +266,73 @@ test_that("cielab_from_spectrum errors on invalid data format", {
   )
 })
 
+test_that("cielab_from_spectrum keeps only OIV 5 nm grid readings, with a message", {
+  wine_data <- generate_wine_spectra()
+  result_5nm <- cielab_from_spectrum(wine_data, sample_col = "WineName")
+
+  # 1 nm resolution data: same values on the grid, linear interpolation between.
+  # Off-grid readings must be discarded (with a message), giving identical results.
+  fine_data <- do.call(rbind, lapply(unique(wine_data$WineName), function(w) {
+    sub <- wine_data[wine_data$WineName == w, ]
+    fine_lambda <- seq(380, 780, by = 1)
+    data.frame(
+      WineName = w,
+      lambda = fine_lambda,
+      T = approx(sub$lambda, sub$T, xout = fine_lambda)$y,
+      stringsAsFactors = FALSE
+    )
+  }))
+
+  expect_message(
+    result_1nm <- cielab_from_spectrum(fine_data, sample_col = "WineName"),
+    "OIV 5 nm grid"
+  )
+  expect_equal(result_1nm, result_5nm)
+})
+
+test_that("cielab_from_spectrum averages replicate readings at the same wavelength", {
+  wine_data <- generate_wine_spectra()
+  red <- wine_data[wine_data$WineName == "RedWine", ]
+
+  # Two replicates of the red wine spectrum, slightly offset, under one name
+  reps <- rbind(
+    transform(red, T = pmin(T * 1.05, 1)),
+    transform(red, T = T * 0.95)
+  )
+  result_reps <- cielab_from_spectrum(reps, sample_col = "WineName")
+
+  # Manually averaged spectrum should give the same result
+  averaged <- aggregate(T ~ WineName + lambda, data = reps, FUN = mean)
+  result_avg <- cielab_from_spectrum(averaged, sample_col = "WineName")
+
+  expect_equal(result_reps, result_avg)
+})
+
+test_that("cielab_from_spectrum warns and returns NA when grid wavelengths are missing", {
+  wine_data <- generate_wine_spectra()
+  wine_data <- wine_data[wine_data$WineName == "RedWine", ]
+  # Remove a mid-spectrum grid wavelength
+  gappy <- wine_data[wine_data$lambda != 550, ]
+
+  expect_warning(
+    result <- cielab_from_spectrum(gappy, sample_col = "WineName"),
+    "missing readings"
+  )
+  expect_true(all(is.na(result$CIELab_L)))
+})
+
+test_that("cielab_from_spectrum errors when no readings fall on the 5 nm grid", {
+  off_grid <- data.frame(
+    WineName = "Bad",
+    lambda = seq(381, 779, by = 5),
+    T = 0.8
+  )
+  expect_error(
+    cielab_from_spectrum(off_grid, sample_col = "WineName"),
+    "No readings fall on the OIV 5 nm wavelength grid"
+  )
+})
+
 test_that("calc_colour_diff and calc_pairwise_dE validate the reference level", {
   lab_data <- data.frame(
     EtOH = rep(c("CTRL", "T1"), each = 3),

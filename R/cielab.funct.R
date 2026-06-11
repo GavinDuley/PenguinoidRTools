@@ -89,10 +89,12 @@ cielab_spectroscopy_percentage_to_fraction <- function(transmission_pct) {
   # Express transmittance at 10 mm path length
   T10 <- .to_T10(transmittance, path_mm)
 
-  # Resample to the OIV method's 5 nm grid by averaging within +/- 2 nm
+  # Look up the transmittance reading at each wavelength of the OIV method's
+  # 5 nm grid (Table 1). The method is defined only at these wavelengths;
+  # replicate readings at the same wavelength are averaged.
   grid <- .oiv_coefficients$lambda
   T10_on_grid <- vapply(grid, function(l) {
-    idx <- which(lambda >= (l - 2) & lambda <= (l + 2))
+    idx <- which(lambda == l)
     if (length(idx) == 0) return(NA_real_)
     mean(T10[idx], na.rm = TRUE)
   }, numeric(1))
@@ -185,6 +187,14 @@ cielab_spectroscopy_percentage_to_fraction <- function(transmission_pct) {
 #' slightly > 1 (e.g., 1.003) are normal instrument noise and ignored. Values
 #' significantly > 1 (> 1.1) trigger a warning - use
 #' \code{cielab_spectroscopy_percentage_to_fraction()} to convert percentages.
+#'
+#' Following the OIV-MA-AS2-11 procedure, the calculation uses transmittance
+#' readings at 5 nm intervals from 380 to 780 nm (the wavelengths at which the
+#' method's Table 1 coefficients are defined). Readings at intermediate
+#' wavelengths - e.g. from instruments scanning at 1 or 2 nm resolution - are
+#' discarded with a message. A sample must have a reading at every 5 nm grid
+#' wavelength, otherwise NA is returned with a warning. Replicate readings at
+#' the same wavelength (e.g. when grouping replicates by wine) are averaged.
 #'
 #' @examples
 #' # Wide format example
@@ -296,18 +306,36 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
             "Use cielab_spectroscopy_percentage_to_fraction() to convert.")
   }
 
-  # Filter to 5nm intervals for efficiency
-  data_long <- data_long[data_long$lambda %% 5 == 0, ]
+  # The OIV-MA-AS2-11 method specifies transmittance readings every 5 nm from
+  # 380 to 780 nm, and its Table 1 coefficients exist only at those
+  # wavelengths. Keep readings on the 5 nm grid and discard any
+  # finer-resolution readings between grid points.
+  on_grid <- data_long$lambda %% 5 == 0
+  if (!any(on_grid)) {
+    stop("No readings fall on the OIV 5 nm wavelength grid (380, 385, ..., 780 nm). ",
+         "The OIV-MA-AS2-11 method requires transmittance measured every 5 nm.")
+  }
+  if (any(!on_grid)) {
+    message("Discarded ", sum(!on_grid), " of ", length(on_grid),
+            " readings at wavelengths between the OIV 5 nm grid points ",
+            "(OIV-MA-AS2-11 uses readings every 5 nm).")
+  }
+  data_long <- data_long[on_grid, ]
 
   # Process each sample
   samples <- unique(data_long$.sample_id)
+  oiv_grid <- .oiv_coefficients$lambda
   results <- lapply(samples, function(s) {
     subset_data <- data_long[data_long$.sample_id == s, ]
 
-    # Check wavelength coverage
-    if (min(subset_data$lambda) > 380 || max(subset_data$lambda) < 780) {
-      warning("Sample '", s, "' has incomplete wavelength coverage (",
-              min(subset_data$lambda), "-", max(subset_data$lambda), " nm)")
+    # The calculation needs a reading at every wavelength of the OIV 5 nm grid
+    missing_wl <- setdiff(oiv_grid, subset_data$lambda)
+    if (length(missing_wl) > 0) {
+      warning("Sample '", s, "' is missing readings at ", length(missing_wl),
+              " of the ", length(oiv_grid), " OIV grid wavelengths (e.g. ",
+              paste(head(missing_wl, 3), collapse = ", "),
+              " nm); returning NA. OIV-MA-AS2-11 requires readings every ",
+              "5 nm from 380 to 780 nm.")
       return(data.frame(
         .sample_id = s,
         CIELab_L = NA, CIELab_a = NA, CIELab_b = NA,
