@@ -61,8 +61,15 @@ df <- data.frame(
   CIELab_a = c(50, -5, 20),
   CIELab_b = c(30, 10, 15)
 )
-cielab_swatch(df, "swatches.png")
+# Write to a temporary file so the example leaves nothing behind.
+out_png <- file.path(tempdir(), "swatches.png")
+cielab_swatch(df, out_png)
+unlink(out_png)
+
+# PDF and SVG output work the same way (SVG needs the svglite package).
+\dontrun{
 cielab_swatch(df, "swatches.pdf")
 cielab_swatch(df, "swatches.svg")
+}
 
 }

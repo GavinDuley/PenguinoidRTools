@@ -963,7 +963,7 @@ cielab_kinetics <- function(data,
       comparison_type = type,
       from_time = from_t,
       to_time = to_t,
-      contrast = paste(to_t, "–", from_t),
+      contrast = paste(to_t, "\u2013", from_t),
       n_from = r1$n,
       n_to = r2$n,
       dL = r2$L - r1$L,
@@ -1101,9 +1101,16 @@ cielab_kinetics <- function(data,
 #'   CIELab_a = c(50, -5, 20),
 #'   CIELab_b = c(30, 10, 15)
 #' )
-#' cielab_swatch(df, "swatches.png")
+#' # Write to a temporary file so the example leaves nothing behind.
+#' out_png <- file.path(tempdir(), "swatches.png")
+#' cielab_swatch(df, out_png)
+#' unlink(out_png)
+#'
+#' # PDF and SVG output work the same way (SVG needs the svglite package).
+#' \dontrun{
 #' cielab_swatch(df, "swatches.pdf")
 #' cielab_swatch(df, "swatches.svg")
+#' }
 #'
 #' @export
 cielab_swatch <- function(CIELab,
