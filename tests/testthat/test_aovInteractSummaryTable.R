@@ -72,6 +72,49 @@ test_that("aovInteractSummaryTable handles columns present for only one factor l
   expect_true(all(result[["single_factor_col"]] == "INVARIANT"))
 })
 
+test_that("aovSummaryTable accepts character grouping and ignores other character columns", {
+  greenhouse1_data <- greenhouse$greenhouse1
+  greenhouse1_data$variety <- as.character(greenhouse1_data$variety)
+  greenhouse1_data$notes <- "free text"
+
+  result <- aovSummaryTable(greenhouse1_data, group_var = "variety")
+
+  expect_s3_class(result, "data.frame")
+  expect_true(all(c("tubers", "weight") %in% colnames(result)))
+  expect_false("notes" %in% colnames(result))
+})
+
+test_that("aovInteractSummaryTable accepts character grouping variables", {
+  greenhouse1_data <- greenhouse$greenhouse1
+  greenhouse1_data$variety <- as.character(greenhouse1_data$variety)
+  greenhouse1_data$method <- as.character(greenhouse1_data$method)
+
+  result <- aovInteractSummaryTable(greenhouse1_data, c("variety", "method"))
+
+  expect_s3_class(result, "data.frame")
+  expect_true(all(c("tubers", "weight") %in% colnames(result)))
+})
+
+test_that("aovInteractSummaryTable applies BH correction within each effect family", {
+  greenhouse1_data <- greenhouse$greenhouse1
+
+  result <- aovInteractSummaryTable(greenhouse1_data, c("variety", "method"))
+
+  for (effect in c("variety", "method", "variety:method")) {
+    raw_p <- sapply(c("tubers", "weight"), function(v) {
+      s <- summary(aov(as.formula(paste(v, "~ variety * method")),
+                       data = greenhouse1_data))[[1]]
+      rownames(s) <- trimws(rownames(s))
+      s[effect, "Pr(>F)"]
+    })
+    expected <- p.adjust(raw_p, method = "BH")
+    bh_row <- result[result$Type == paste0("BH-Corrected-P-value-", effect), ]
+    for (v in c("tubers", "weight")) {
+      expect_true(startsWith(bh_row[[v]], as.character(signif(expected[v], 4))))
+    }
+  }
+})
+
 test_that("aovSummaryTable handles columns present for only one factor level without error", {
   greenhouse1_data <- greenhouse$greenhouse1
   first_variety <- levels(as.factor(greenhouse1_data$variety))[1]

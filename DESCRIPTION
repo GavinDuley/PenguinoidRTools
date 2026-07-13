@@ -1,7 +1,7 @@
 Package: PenguinoidRTools
 Type: Package
 Title: PenguinoidRTools: Misc Useful R Functions
-Version: 0.6
+Version: 0.7
 Author: Gavin Duley <gduley@gmail.com>
 Maintainer: Gavin Duley <gduley@gmail.com>
 Description: This package contains useful R functions for statistical analysis

@@ -19,14 +19,15 @@ Computes the Euclidean distance between two colours in CIELab space,
 also known as Delta E (CIE 1976).
 }
 \details{
-Interpretation of Delta E values:
+Rough interpretation of Delta E values:
 \itemize{
-  \item 0-1: Not perceptible by human eye
+  \item < 1: Generally not perceptible to the human eye
   \item 1-2: Perceptible through close observation
-  \item 2-10: Perceptible at a glance
-  \item 11-49: Colours are more similar than opposite
-  \item 100: Colours are exact opposites
+  \item > 2: Increasingly perceptible at a glance
 }
+Note that CIE76 Delta E is unbounded and not perceptually uniform;
+for perceptually uniform differences use the CIE2000 formula
+(see \code{\link{calc_pairwise_dE}} with \code{method = "CIE2000"}).
 }
 \examples{
 deltaE76(50, 10, 20, 55, 15, 25)

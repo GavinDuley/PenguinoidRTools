@@ -54,6 +54,14 @@ Transmission values should be fractions (0-1), not percentages. Small values
 slightly > 1 (e.g., 1.003) are normal instrument noise and ignored. Values
 significantly > 1 (> 1.1) trigger a warning - use
 \code{cielab_spectroscopy_percentage_to_fraction()} to convert percentages.
+
+Following the OIV-MA-AS2-11 procedure, the calculation uses transmittance
+readings at 5 nm intervals from 380 to 780 nm (the wavelengths at which the
+method's Table 1 coefficients are defined). Readings at intermediate
+wavelengths - e.g. from instruments scanning at 1 or 2 nm resolution - are
+discarded with a message. A sample must have a reading at every 5 nm grid
+wavelength, otherwise NA is returned with a warning. Replicate readings at
+the same wavelength (e.g. when grouping replicates by wine) are averaged.
 }
 \examples{
 # Wide format example

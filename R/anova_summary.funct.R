@@ -9,7 +9,8 @@
 #'
 #' @name aovSummaryTable
 #' @description This function generates a table of means and key statistical
-#'  values from an ANOVA for each numeric variable in a data frame. It also
+#'  values from an ANOVA for each numeric variable in a data frame. Non-numeric
+#'  columns (other than the grouping variable) are ignored. It also
 #'  appends rows for the Benjamini–Hochberg (BH) corrected p-values and significance.
 #'  The output includes a “Type” column so that the row labels are exported to Excel.
 #'
@@ -30,110 +31,99 @@ aovSummaryTable <- function(aov_data,
                             output_file = NULL,
                             return_raw = FALSE,
                             output_name = "aov_results") {
+  if (!group_var %in% colnames(aov_data)) {
+    stop("Error: group_var '", group_var, "' is not present in aov_data.")
+  }
+  aov_data[[group_var]] <- as.factor(aov_data[[group_var]])
+
   # Get the factor levels for the grouping variable and define base row labels.
-  group_levels <- levels(as.factor(aov_data[[group_var]]))
+  group_levels <- levels(aov_data[[group_var]])
   base_rows <- c(group_levels, "P-value", "F-value", "Significant")
-  
+
   # Create the initial summary table with a "Type" column holding the row labels.
   summary_table <- data.frame(Type = base_rows, stringsAsFactors = FALSE)
-  
+
   # Vector to store raw p-values for BH correction.
-  pvalues_vec <- c()
-  
-  if (return_raw) {
-    raw_outputs <- list()
+  pvalues_vec <- numeric(0)
+  raw_outputs <- list()
+
+  # Helper: TRUE if the column is effectively invariant for ANOVA purposes —
+  # either the response is constant, or group_var has <2 levels after
+  # removing NAs for that column (which would cause the "contrasts" error).
+  col_is_invariant <- function(col_name) {
+    col_vals <- aov_data[[col_name]]
+    if (length(unique(col_vals)) <= 1) return(TRUE)
+    non_na_groups <- aov_data[[group_var]][!is.na(col_vals)]
+    length(unique(non_na_groups)) < 2
   }
-  
-  # Skip factor columns.
-  factor_indices <- which(sapply(aov_data, is.factor))
 
-  # Loop over each column.
-  for (i in 1:ncol(aov_data)) {
-    if (i %in% factor_indices) next
-    if (!is.numeric(aov_data[[i]])) {
-      stop(paste("Error: Column", colnames(aov_data)[i], "is not numeric or factor."))
-    }
-    columnname <- colnames(aov_data)[i]
+  # Analyse each numeric column; everything else (factors, characters, the
+  # grouping variable itself) is ignored.
+  numeric_cols <- colnames(aov_data)[sapply(aov_data, is.numeric)]
 
-    # Check invariance: constant response OR group_var has <2 levels after NA removal.
-    non_na_data <- aov_data[!is.na(aov_data[[i]]), ]
-    col_is_invariant <- length(unique(aov_data[[i]])) == 1 ||
-      length(unique(non_na_data[[group_var]])) < 2
-
-    if (col_is_invariant) {
-      # For invariant columns, fill with "invariant".
+  for (columnname in numeric_cols) {
+    if (col_is_invariant(columnname)) {
       summary_table[[columnname]] <- rep("invariant", length(base_rows))
-    } else {
-      # Run ANOVA and Tukey HSD.
-      t.anova <- aov(as.formula(paste(columnname, "~", group_var)), data = aov_data)
-      test2 <- agricolae::HSD.test(t.anova, trt = group_var, group = TRUE)
-      
-      if (return_raw) {
-        raw_outputs[[columnname]] <- list(aov = t.anova, tukey = test2)
-      }
-      
-      # Build group summaries matching the factor levels.
-      group_summaries <- rep("Not available", length(group_levels))
-      names(group_summaries) <- group_levels
-      for (grp in rownames(test2$means)) {
-        if (grp %in% group_levels) {
-          group_summaries[grp] <- paste0(
-            signif(test2$means[grp, columnname], digits = 4),
-            " ", test2$groups[grp, "groups"]
-          )
-        }
-      }
-      
-      # Extract the raw p-value and F-value.
-      raw_p <- summary(t.anova)[[1]][1, 5]
-      p_value_str <- paste0(signif(raw_p, digits = 4), " ", stars.pval(raw_p))
-      f_value <- signif(summary(t.anova)[[1]][1, 4], digits = 4)
-      significance <- if (raw_p <= 0.05) "SIGNIFICANT" else "NOT SIGNIFICANT"
-      
-      # Store the raw p-value.
-      pvalues_vec[columnname] <- raw_p
-      
-      # Append values (group summaries then overall statistics) as a new column.
-      summary_table[[columnname]] <- c(
-        group_summaries,
-        p_value_str,
-        f_value,
-        significance
+      next
+    }
+
+    # Run ANOVA and Tukey HSD. Backticks allow non-syntactic column names.
+    formula <- as.formula(paste0("`", columnname, "` ~ `", group_var, "`"))
+    t.anova <- aov(formula, data = aov_data)
+    test2 <- agricolae::HSD.test(t.anova, trt = group_var, group = TRUE)
+
+    raw_outputs[[columnname]] <- list(aov = t.anova, tukey = test2)
+
+    # Build group summaries matching the factor levels.
+    group_summaries <- rep("Not available", length(group_levels))
+    names(group_summaries) <- group_levels
+    for (grp in intersect(rownames(test2$means), group_levels)) {
+      group_summaries[grp] <- paste0(
+        signif(test2$means[grp, columnname], digits = 4),
+        " ", test2$groups[grp, "groups"]
       )
     }
+
+    # Extract the p-value and F-value by name rather than position. The
+    # group effect is the single non-Residuals row of the ANOVA summary.
+    aov_summary <- summary(t.anova)[[1]]
+    rownames(aov_summary) <- trimws(rownames(aov_summary))
+    effect_row <- setdiff(rownames(aov_summary), "Residuals")[1]
+    raw_p <- aov_summary[effect_row, "Pr(>F)"]
+    f_value <- signif(aov_summary[effect_row, "F value"], digits = 4)
+    p_value_str <- paste0(signif(raw_p, digits = 4), " ", stars.pval(raw_p))
+    significance <- ifelse(raw_p <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT")
+
+    # Store the raw p-value.
+    pvalues_vec[columnname] <- raw_p
+
+    # Append values (group summaries then overall statistics) as a new column.
+    summary_table[[columnname]] <- c(
+      group_summaries,
+      p_value_str,
+      f_value,
+      significance
+    )
   }
-  
-  # Compute BH-corrected p-values if any p-values were collected.
-  if (length(pvalues_vec) > 0) {
-    bh_p_values <- p.adjust(pvalues_vec, method = "BH")
-    # Build two vectors for the new rows.
-    bh_corr_row <- c("BH-Corrected-P-value")
-    bh_sig_row <- c("BH-Significant")
-    # For each variable column (skip the "Type" column).
-    for (col in setdiff(colnames(summary_table), "Type")) {
-      if (col %in% names(bh_p_values)) {
-        bh_val <- bh_p_values[col]
-        bh_corr_row <- c(bh_corr_row, paste0(signif(bh_val, digits = 4), " ", stars.pval(bh_val)))
-        bh_sig_row <- c(bh_sig_row, ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
-      } else {
-        bh_corr_row <- c(bh_corr_row, "invariant")
-        bh_sig_row <- c(bh_sig_row, "invariant")
-      }
+
+  # Compute BH-corrected p-values across all analysed variables and append
+  # them as two new rows. Invariant columns are labelled as such.
+  bh_p_values <- p.adjust(pvalues_vec, method = "BH")
+  bh_rows <- data.frame(Type = c("BH-Corrected-P-value", "BH-Significant"),
+                        stringsAsFactors = FALSE)
+  for (col in setdiff(colnames(summary_table), "Type")) {
+    if (col %in% names(bh_p_values)) {
+      bh_val <- bh_p_values[col]
+      bh_rows[[col]] <- c(
+        paste0(signif(bh_val, digits = 4), " ", stars.pval(bh_val)),
+        ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT")
+      )
+    } else {
+      bh_rows[[col]] <- c("invariant", "invariant")
     }
-    # Append these new rows to the summary table.
-    summary_table <- rbind(summary_table,
-                           setNames(as.list(bh_corr_row), colnames(summary_table)),
-                           setNames(as.list(bh_sig_row), colnames(summary_table)))
-  } else {
-    # If no p-values were collected, add rows with NAs.
-    new_row <- rep(NA, ncol(summary_table))
-    summary_table <- rbind(summary_table,
-                           setNames(new_row, colnames(summary_table)),
-                           setNames(new_row, colnames(summary_table)))
-    summary_table[nrow(summary_table)-1, "Type"] <- "BH-Corrected-P-value"
-    summary_table[nrow(summary_table), "Type"] <- "BH-Significant"
   }
-  
+  summary_table <- rbind(summary_table, bh_rows)
+
   # Write the table to Excel (the "Type" column is now included).
   if (!is.null(output_file)) {
     openxlsx::write.xlsx(summary_table, output_file, rowNames = FALSE)
@@ -154,7 +144,10 @@ aovSummaryTable <- function(aov_data,
 #' @description This function generates a table of means and key statistical
 #'  values from an ANOVA that includes interactions among multiple grouping variables.
 #'  It also appends BH-corrected p-values and significance as additional rows.
-#'  A "Type" column is added so that the row labels export correctly to Excel.
+#'  The BH correction is applied separately within each effect family (i.e. all
+#'  p-values for a given main effect or interaction are corrected together,
+#'  across variables). A "Type" column is added so that the row labels export
+#'  correctly to Excel.
 #'
 #' @param aov_data The data frame containing the data.
 #' @param group_vars A vector of column names containing the grouping variables.
@@ -176,15 +169,9 @@ aovInteractSummaryTable <- function(aov_data,
   if (!all(group_vars %in% colnames(aov_data))) {
     stop("Error: One or more group_vars are not present in aov_data.")
   }
-  
-  if (return_raw) {
-    raw_outputs <- list()
+  for (gv in group_vars) {
+    aov_data[[gv]] <- as.factor(aov_data[[gv]])
   }
-  
-  summary_list <- list()
-  row_names_list <- list()
-  invariant_cols <- c()
-  pvalues_vec <- c()
 
   # Helper: TRUE if the column is effectively invariant for ANOVA purposes —
   # either the response is constant, or any group_var has <2 levels after
@@ -193,70 +180,64 @@ aovInteractSummaryTable <- function(aov_data,
     col_vals <- aov_data[[col_name]]
     if (length(unique(col_vals)) <= 1) return(TRUE)
     non_na_data <- aov_data[!is.na(col_vals), ]
-    for (gv in group_vars) {
-      if (length(unique(non_na_data[[gv]])) < 2) return(TRUE)
-    }
-    FALSE
+    any(vapply(group_vars,
+               function(gv) length(unique(non_na_data[[gv]])) < 2,
+               logical(1)))
   }
 
-  # First pass: collect all row names from group summaries
-  for (col_name in colnames(aov_data)) {
-    if (!is.numeric(aov_data[[col_name]]) || is.factor(aov_data[[col_name]])) next
+  # Analyse each numeric column; everything else (factors, characters, the
+  # grouping variables themselves) is ignored.
+  numeric_cols <- colnames(aov_data)[sapply(aov_data, is.numeric)]
+  invariant_cols <- Filter(col_is_invariant, numeric_cols)
+  model_cols <- setdiff(numeric_cols, invariant_cols)
 
-    if (col_is_invariant(col_name)) {
-      invariant_cols <- c(invariant_cols, col_name)
-      next
-    }
-
-    formula <- as.formula(paste(col_name, "~", paste(group_vars, collapse = "*")))
+  # Fit each model once, caching the ANOVA and Tukey HSD results.
+  # Backticks allow non-syntactic column names.
+  rhs <- paste0("`", group_vars, "`", collapse = " * ")
+  models <- lapply(model_cols, function(col_name) {
+    formula <- as.formula(paste0("`", col_name, "` ~ ", rhs))
     t.anova <- aov(formula, data = aov_data)
     test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
+    list(aov = t.anova, tukey = test2)
+  })
+  names(models) <- model_cols
+  raw_outputs <- models
 
-    row_names_list[[col_name]] <- rownames(test2$groups)
-  }
-  
-  row_names <- unique(unlist(row_names_list))
+  # Collect all treatment-combination row names across variables.
+  row_names <- unique(unlist(lapply(models, function(m) rownames(m$tukey$groups))))
 
-  # Determine all effect names from the first ANOVA
+  # Determine all effect names from the first ANOVA (excluding Residuals).
+  # Note: rownames from summary(aov()) have trailing whitespace, so we must
+  # trim before comparing.
   effect_names <- c()
-  if (length(row_names_list) > 0) {
-    first_col <- names(row_names_list)[1]
-    formula <- as.formula(paste(first_col, "~", paste(group_vars, collapse = "*")))
-    temp_aov <- aov(formula, data = aov_data)
-    aov_summary <- summary(temp_aov)[[1]]
-    # Get effect names (excluding Residuals)
-    # Note: rownames from summary(aov()) have trailing whitespace, so we must
-    # trim before comparing.
-    effect_names <- trimws(rownames(aov_summary))
-    effect_names <- effect_names[effect_names != "Residuals"]
+  if (length(models) > 0) {
+    first_summary <- summary(models[[1]]$aov)[[1]]
+    effect_names <- setdiff(trimws(rownames(first_summary)), "Residuals")
   }
 
   # Create row labels with separate rows for each effect's statistics
-  stat_rows <- c()
-  for (effect in effect_names) {
-    stat_rows <- c(stat_rows,
-                   paste0("P-value-", effect),
-                   paste0("F-value-", effect),
-                   paste0("Significant-", effect))
-  }
+  stat_rows <- unlist(lapply(effect_names, function(effect) {
+    paste0(c("P-value-", "F-value-", "Significant-"), effect)
+  }))
   row_labels <- c(row_names, stat_rows)
-  
-  # Second pass: build summary for each variable
-  for (col_name in names(row_names_list)) {
-    formula <- as.formula(paste(col_name, "~", paste(group_vars, collapse = "*")))
-    t.anova <- aov(formula, data = aov_data)
-    test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
-    
+
+  # Build the summary column for each variable. P-values are collected per
+  # effect so that BH correction can be applied within each effect family.
+  summary_list <- list()
+  pvalues_by_effect <- list()
+
+  for (col_name in model_cols) {
+    t.anova <- models[[col_name]]$aov
+    test2 <- models[[col_name]]$tukey
+
     group_summaries <- rep("Not available", length(row_names))
     names(group_summaries) <- row_names
-    for (grp in rownames(test2$means)) {
-      if (grp %in% row_names) {
-        mean_val <- signif(test2$means[grp, col_name], digits = 4)
-        group_summaries[grp] <- paste0(mean_val, " ", test2$groups[grp, "groups"])
-      }
+    for (grp in intersect(rownames(test2$means), row_names)) {
+      mean_val <- signif(test2$means[grp, col_name], digits = 4)
+      group_summaries[grp] <- paste0(mean_val, " ", test2$groups[grp, "groups"])
     }
 
-    # Extract ALL effects' p-values and F-values (not just the first row)
+    # Extract ALL effects' p-values and F-values by name (not by position)
     aov_summary <- summary(t.anova)[[1]]
     rownames(aov_summary) <- trimws(rownames(aov_summary))
     effect_stats <- c()
@@ -270,79 +251,51 @@ aovInteractSummaryTable <- function(aov_data,
                           signif(f_val, digits = 4),
                           ifelse(p_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
 
-        # Store p-value for BH correction with unique name
-        pvalues_vec[paste0(col_name, ":", effect)] <- p_val
+        pvalues_by_effect[[effect]][col_name] <- p_val
       } else {
         # If effect not found, add NA values
         effect_stats <- c(effect_stats, NA, NA, NA)
       }
     }
 
-    group_summaries <- c(group_summaries, effect_stats)
-    summary_list[[col_name]] <- group_summaries
-    
-    if (return_raw) {
-      raw_outputs[[col_name]] <- list(aov = t.anova, tukey = test2)
-    }
+    summary_list[[col_name]] <- c(group_summaries, effect_stats)
   }
 
   # Populate invariant columns with "INVARIANT" for every row
-  n_rows <- length(row_labels)
   for (col_name in invariant_cols) {
-    summary_list[[col_name]] <- rep("INVARIANT", n_rows)
+    summary_list[[col_name]] <- rep("INVARIANT", length(row_labels))
   }
 
   # Restore original column order (non-invariant + invariant may be out of order)
-  all_numeric_cols <- colnames(aov_data)[
-    sapply(aov_data, is.numeric) & !sapply(aov_data, is.factor)
-  ]
-  summary_list <- summary_list[intersect(all_numeric_cols, names(summary_list))]
+  summary_list <- summary_list[intersect(numeric_cols, names(summary_list))]
 
   # Create the summary table
-  summary_table <- as.data.frame(summary_list, stringsAsFactors = FALSE)
+  summary_table <- as.data.frame(summary_list, stringsAsFactors = FALSE,
+                                 check.names = FALSE)
   summary_table <- cbind(Type = row_labels, summary_table)
-  
-  # Compute BH-corrected p-values (correcting ALL p-values together)
-  if (length(pvalues_vec) > 0) {
-    bh_p_values <- p.adjust(pvalues_vec, method = "BH")
 
-    # Create separate rows for each effect's BH-corrected statistics
-    bh_rows <- list()
-    for (effect in effect_names) {
-      bh_corr_row <- c(paste0("BH-Corrected-P-value-", effect))
-      bh_sig_row <- c(paste0("BH-Significant-", effect))
+  # Append BH-corrected p-values and significance, correcting within each
+  # effect family (all variables' p-values for one effect at a time).
+  variable_cols <- setdiff(colnames(summary_table), "Type")
+  for (effect in effect_names) {
+    bh_p_values <- p.adjust(pvalues_by_effect[[effect]], method = "BH")
 
-      for (col in setdiff(colnames(summary_table), "Type")) {
-        pval_name <- paste0(col, ":", effect)
-        if (pval_name %in% names(bh_p_values)) {
-          bh_val <- bh_p_values[pval_name]
-          bh_corr_row <- c(bh_corr_row, paste0(signif(bh_val, digits = 4), " ", stars.pval(bh_val)))
-          bh_sig_row <- c(bh_sig_row, ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"))
-        } else {
-          bh_corr_row <- c(bh_corr_row, "INVARIANT")
-          bh_sig_row <- c(bh_sig_row, "INVARIANT")
-        }
+    bh_rows <- data.frame(Type = paste0(c("BH-Corrected-P-value-", "BH-Significant-"), effect),
+                          stringsAsFactors = FALSE)
+    for (col in variable_cols) {
+      if (col %in% names(bh_p_values)) {
+        bh_val <- bh_p_values[col]
+        bh_rows[[col]] <- c(
+          paste0(signif(bh_val, digits = 4), " ", stars.pval(bh_val)),
+          ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT")
+        )
+      } else {
+        bh_rows[[col]] <- c("INVARIANT", "INVARIANT")
       }
-
-      bh_rows[[length(bh_rows) + 1]] <- setNames(as.list(bh_corr_row), colnames(summary_table))
-      bh_rows[[length(bh_rows) + 1]] <- setNames(as.list(bh_sig_row), colnames(summary_table))
     }
-
-    # Append all BH rows to the summary table
-    for (row in bh_rows) {
-      summary_table <- rbind(summary_table, row)
-    }
-  } else {
-    # If no p-values, add placeholder rows
-    for (effect in effect_names) {
-      new_row <- rep(NA, ncol(summary_table))
-      summary_table <- rbind(summary_table, setNames(new_row, colnames(summary_table)))
-      summary_table[nrow(summary_table), "Type"] <- paste0("BH-Corrected-P-value-", effect)
-      summary_table <- rbind(summary_table, setNames(new_row, colnames(summary_table)))
-      summary_table[nrow(summary_table), "Type"] <- paste0("BH-Significant-", effect)
-    }
+    summary_table <- rbind(summary_table, bh_rows)
   }
-  
+
   if (!is.null(output_file)) {
     openxlsx::write.xlsx(summary_table, output_file, rowNames = FALSE)
   }
