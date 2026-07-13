@@ -11,8 +11,8 @@
 #' @description This function generates a table of means and key statistical
 #'  values from an ANOVA for each numeric variable in a data frame. Non-numeric
 #'  columns (other than the grouping variable) are ignored. It also
-#'  appends rows for the Benjamini–Hochberg (BH) corrected p-values and significance.
-#'  The output includes a “Type” column so that the row labels are exported to Excel.
+#'  appends rows for the Benjamini-Hochberg (BH) corrected p-values and significance.
+#'  The output includes a "Type" column so that the row labels are exported to Excel.
 #'
 #' @param aov_data The data frame containing the data.
 #' @param group_var The name of the column containing the grouping variable.
@@ -47,7 +47,7 @@ aovSummaryTable <- function(aov_data,
   pvalues_vec <- numeric(0)
   raw_outputs <- list()
 
-  # Helper: TRUE if the column is effectively invariant for ANOVA purposes —
+  # Helper: TRUE if the column is effectively invariant for ANOVA purposes --
   # either the response is constant, or group_var has <2 levels after
   # removing NAs for that column (which would cause the "contrasts" error).
   col_is_invariant <- function(col_name) {
@@ -173,7 +173,7 @@ aovInteractSummaryTable <- function(aov_data,
     aov_data[[gv]] <- as.factor(aov_data[[gv]])
   }
 
-  # Helper: TRUE if the column is effectively invariant for ANOVA purposes —
+  # Helper: TRUE if the column is effectively invariant for ANOVA purposes --
   # either the response is constant, or any group_var has <2 levels after
   # removing NAs for that column (which would cause the "contrasts" error).
   col_is_invariant <- function(col_name) {

@@ -5,7 +5,7 @@
 # Licenced under the GPL-3.0 licence
 
 # ==============================================================================
-# read_agilent_dad_peaks — parser
+# read_agilent_dad_peaks -- parser
 # ==============================================================================
 
 #' Read an Agilent MassHunter UV-DAD peak table export
@@ -156,7 +156,7 @@ read_agilent_dad_peaks <- function(
 }
 
 # ==============================================================================
-# align_peaks_by_rt — aligner
+# align_peaks_by_rt -- aligner
 # ==============================================================================
 
 #' Align peaks across samples by retention time
@@ -170,7 +170,7 @@ read_agilent_dad_peaks <- function(
 #' @param peaks_long Long-format data frame from \code{\link{read_agilent_dad_peaks}}.
 #' @param max_drift Numeric. Maximum RT difference (minutes) allowed for a
 #'   valid match. Peaks with no reference peak within this window are reported
-#'   as \code{UNMATCHED}. Set generously — the ambiguity flagging handles hard
+#'   as \code{UNMATCHED}. Set generously -- the ambiguity flagging handles hard
 #'   cases. Default \code{0.5}.
 #'
 #' @return A named list with three elements:

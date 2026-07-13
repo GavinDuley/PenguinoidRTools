@@ -572,7 +572,7 @@ cielab_to_hex <- function(L, a, b, fixup = TRUE) {
 #'   \describe{
 #'     \item{<group_by columns>}{Grouping variables (if specified)}
 #'     \item{<compare_by>}{The comparison level}
-#'     \item{contrast}{Character description of the comparison (e.g., "Treatment – CTRL")}
+#'     \item{contrast}{Character description of the comparison (e.g., "Treatment - CTRL")}
 #'     \item{dL}{Difference in L* (lightness)}
 #'     \item{dC}{Difference in C* (chroma)}
 #'     \item{dh}{Signed difference in hue angle (degrees)}
@@ -963,7 +963,7 @@ cielab_kinetics <- function(data,
       comparison_type = type,
       from_time = from_t,
       to_time = to_t,
-      contrast = paste(to_t, "–", from_t),
+      contrast = paste(to_t, "\u2013", from_t),
       n_from = r1$n,
       n_to = r2$n,
       dL = r2$L - r1$L,
@@ -1101,9 +1101,11 @@ cielab_kinetics <- function(data,
 #'   CIELab_a = c(50, -5, 20),
 #'   CIELab_b = c(30, 10, 15)
 #' )
+#' \dontrun{
 #' cielab_swatch(df, "swatches.png")
 #' cielab_swatch(df, "swatches.pdf")
 #' cielab_swatch(df, "swatches.svg")
+#' }
 #'
 #' @export
 cielab_swatch <- function(CIELab,
