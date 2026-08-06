@@ -70,10 +70,14 @@ test_that("cielab_spectroscopy_percentage_to_fraction warns on invalid values", 
     "Negative transmission values"
   )
 
-  # Values > 100 warning
+  # Slightly > 100% is normal instrument noise around a transparent blank
+  expect_no_warning(cielab_spectroscopy_percentage_to_fraction(100.8))
+  expect_equal(cielab_spectroscopy_percentage_to_fraction(100.8), 1.008)
+
+  # Values well above 100% still warn
   expect_warning(
-    cielab_spectroscopy_percentage_to_fraction(105),
-    "Transmission values > 100%"
+    cielab_spectroscopy_percentage_to_fraction(115),
+    "Transmission values > 110%"
   )
 })
 

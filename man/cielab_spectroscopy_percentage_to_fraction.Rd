@@ -17,6 +17,12 @@ Numeric vector of transmission values as fractions (0-1 scale)
 Converts spectrophotometry transmission data from percentage (0-100) to
 fraction (0-1) format required by cielab_from_spectrum().
 }
+\details{
+Readings slightly above 100\% (e.g. 100.8\%) are normal instrument noise
+around a fully transparent blank and are converted without complaint.
+Values above 110\% suggest a real data problem and trigger a warning, as
+do negative values.
+}
 \examples{
 # Convert 50\% transmission to fraction
 cielab_spectroscopy_percentage_to_fraction(50)
