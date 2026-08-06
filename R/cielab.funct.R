@@ -34,6 +34,11 @@
 #' Converts spectrophotometry transmission data from percentage (0-100) to
 #' fraction (0-1) format required by cielab_from_spectrum().
 #'
+#' Readings slightly above 100\% (e.g. 100.8\%) are normal instrument noise
+#' around a fully transparent blank and are converted without complaint.
+#' Values above 110\% suggest a real data problem and trigger a warning, as
+#' do negative values.
+#'
 #' @param transmission_pct Numeric vector of transmission values as percentages
 #'   (0-100 scale)
 #' @return Numeric vector of transmission values as fractions (0-1 scale)
@@ -52,8 +57,14 @@ cielab_spectroscopy_percentage_to_fraction <- function(transmission_pct) {
   if (any(transmission_pct < 0, na.rm = TRUE)) {
     warning("Negative transmission values detected; these are physically impossible.")
   }
-  if (any(transmission_pct > 100, na.rm = TRUE)) {
-    warning("Transmission values > 100% detected; check data for errors.")
+  # Readings a little over 100% are routine instrument noise around a fully
+  # transparent blank; only values well beyond that indicate a data problem.
+  # 110% mirrors the 1.1 fraction tolerance used in cielab_from_spectrum().
+  if (any(transmission_pct > 110, na.rm = TRUE)) {
+    warning("Transmission values > 110% detected (max = ",
+            round(max(transmission_pct, na.rm = TRUE), 1),
+            "%); readings slightly above 100% are normal instrument noise, ",
+            "but this is beyond that - check data for errors.")
   }
   transmission_pct / 100
 }
