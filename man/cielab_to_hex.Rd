@@ -17,7 +17,8 @@ cielab_to_hex(L, a, b, fixup = TRUE)
 clipped to the nearest representable colour rather than returned as NA.}
 }
 \value{
-Character vector of hex colour strings (e.g. "#A03C2F").
+Character vector of hex colour strings (e.g. "#A03C2F"). Missing
+  coordinates give NA.
 }
 \description{
 Converts CIELab L*, a*, b* coordinates to hexadecimal sRGB colour strings,
@@ -31,4 +32,5 @@ Requires the \pkg{colorspace} package.
 cielab_to_hex(50, 40, 30)
 cielab_to_hex(c(30, 90), c(50, -5), c(30, 10))
 }
+
 }

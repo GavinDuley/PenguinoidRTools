@@ -30,27 +30,27 @@ or \code{"consecutive"} (each timepoint vs the previous one).}
 
 \item{time_levels}{Optional character/numeric vector giving the timepoints
 in chronological order. If NULL (default), the order is taken from: the
-numeric values (if \code{time_col} is numeric); the levels of an ordered
-factor; otherwise a number parsed from each label (e.g. "0M", "3M", "12M"
--> 0, 3, 12), falling back to factor levels or order of appearance with a
-message if no number can be parsed.}
+numeric values (if \code{time_col} is numeric); the factor levels (if
+\code{time_col} is a factor); otherwise a number parsed from each label
+(e.g. "0M", "3M", "12M" -> 0, 3, 12), falling back to order of appearance
+with a message if no number can be parsed.}
 }
 \value{
 A data.frame with one row per comparison, containing:
-\describe{
-  \item{<group_by columns>}{Grouping variables (if specified)}
-  \item{comparison_type}{"baseline" or "consecutive"}
-  \item{from_time, to_time}{The two timepoints compared}
-  \item{contrast}{Character label, e.g. "3M - 0M"}
-  \item{n_from, n_to}{Number of observations averaged at each timepoint}
-  \item{dL}{Difference in L* (lightness)}
-  \item{dC}{Difference in C* (chroma)}
-  \item{dh}{Signed difference in hue angle (degrees)}
-  \item{dE76}{CIE76 Delta E between the two centroids}
-  \item{dE00}{CIE2000 Delta E between the two centroids}
-}
-Differences are expressed as (later timepoint - earlier timepoint), so a
-positive \code{dL} means the wine got lighter over time.
+  \describe{
+    \item{<group_by columns>}{Grouping variables (if specified)}
+    \item{comparison_type}{"baseline" or "consecutive"}
+    \item{from_time, to_time}{The two timepoints compared}
+    \item{contrast}{Character label, e.g. "3M - 0M"}
+    \item{n_from, n_to}{Number of observations averaged at each timepoint}
+    \item{dL}{Difference in L* (lightness)}
+    \item{dC}{Difference in C* (chroma)}
+    \item{dh}{Signed difference in hue angle (degrees)}
+    \item{dE76}{CIE76 Delta E between the two centroids}
+    \item{dE00}{CIE2000 Delta E between the two centroids}
+  }
+  Differences are expressed as (later timepoint - earlier timepoint), so a
+  positive \code{dL} means the wine got lighter over time.
 }
 \description{
 Tracks how wine colour changes across an ordered series of timepoints by
@@ -67,6 +67,10 @@ of timepoints. Use \code{comparison = "baseline"} to see cumulative change
 from the start, \code{"consecutive"} to see the rate of change between
 successive measurements, or \code{"both"} for the two stacked together.
 
+Rows with NA CIELab coordinates (e.g. samples that
+\code{\link{cielab_from_spectrum}} could not compute) are dropped with a
+warning before centroids are calculated.
+
 The function requires the \pkg{farver} package for CIE2000 calculations.
 }
 \examples{
@@ -81,6 +85,7 @@ kin <- cielab_kinetics(
 # Only cumulative change from the first timepoint
 kin <- cielab_kinetics(wine_colours, "Months", comparison = "baseline")
 }
+
 }
 \seealso{
 \code{\link{calc_colour_diff}}, \code{\link{deltaE00}}

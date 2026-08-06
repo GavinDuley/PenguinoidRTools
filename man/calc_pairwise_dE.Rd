@@ -55,6 +55,10 @@ This approach captures the full variability in colour differences and is
 useful when you need confidence intervals or want to assess the spread
 of colour differences.
 
+Rows with NA CIELab coordinates (e.g. samples that
+\code{\link{cielab_from_spectrum}} could not compute) are dropped with a
+warning before pairwise differences are calculated.
+
 The function requires the \pkg{farver} package for CIE2000 calculations.
 }
 \examples{

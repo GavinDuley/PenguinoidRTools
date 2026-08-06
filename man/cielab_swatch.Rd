@@ -53,6 +53,10 @@ Supported output formats depend on your system's graphics devices:
   \item PDF, EPS, PS: Vector formats (scalable)
   \item SVG: Web-friendly vector format (requires svglite package)
 }
+
+Rows with NA CIELab coordinates (e.g. samples that
+\code{\link{cielab_from_spectrum}} could not compute) are dropped with a
+warning; if every row is NA an error explains where to look.
 }
 \examples{
 df <- data.frame(

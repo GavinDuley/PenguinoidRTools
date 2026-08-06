@@ -366,6 +366,154 @@ test_that("calc_colour_diff and calc_pairwise_dE validate the reference level", 
   )
 })
 
+test_that("cielab_from_spectrum warns on NA transmittance instead of silent NA", {
+  wine_data <- generate_wine_spectra()
+  wine_data <- wine_data[wine_data$WineName == "RedWine", ]
+  # Wavelength present, but its only reading is NA
+  wine_data$T[wine_data$lambda == 550] <- NA
+
+  expect_warning(
+    result <- cielab_from_spectrum(wine_data, sample_col = "WineName"),
+    "NA transmittance"
+  )
+  expect_true(is.na(result$CIELab_L))
+})
+
+test_that("cielab_from_spectrum failure paths return numeric (not logical) NA", {
+  wine_data <- generate_wine_spectra()
+  gappy <- wine_data[wine_data$lambda != 550, ]
+
+  result <- suppressWarnings(
+    cielab_from_spectrum(gappy, sample_col = "WineName")
+  )
+  # All samples fail, but the CIELab columns must stay numeric so downstream
+  # functions (colorspace, dplyr summaries) see doubles, not logicals
+  expect_true(all(is.na(result$CIELab_L)))
+  for (col in c("CIELab_L", "CIELab_a", "CIELab_b", "CIELab_C", "CIELab_H")) {
+    expect_type(result[[col]], "double")
+  }
+})
+
+test_that("cielab_from_spectrum summarises how many samples failed", {
+  wine_data <- generate_wine_spectra()
+
+  # All samples missing a grid wavelength -> loud "All ... samples" summary
+  gappy_all <- wine_data[wine_data$lambda != 550, ]
+  w <- capture_warnings(cielab_from_spectrum(gappy_all, sample_col = "WineName"))
+  expect_true(any(grepl("All 3 samples returned NA", w)))
+
+  # One sample missing a wavelength -> "1 of 3 samples" summary
+  gappy_one <- wine_data[!(wine_data$WineName == "RedWine" &
+                             wine_data$lambda == 550), ]
+  w <- capture_warnings(cielab_from_spectrum(gappy_one, sample_col = "WineName"))
+  expect_true(any(grepl("1 of 3 samples returned NA", w)))
+})
+
+test_that("cielab_to_hex handles NA coordinates without crashing", {
+  skip_if_not_installed("colorspace")
+
+  # Logical NA (what an all-failed cielab_from_spectrum result used to give)
+  expect_true(is.na(cielab_to_hex(NA, NA, NA)))
+
+  # Mixed valid / NA values
+  result <- cielab_to_hex(c(50, NA), c(10, NA), c(20, NA))
+  expect_false(is.na(result[1]))
+  expect_true(is.na(result[2]))
+
+  # Non-numeric input gets a clear error
+  expect_error(cielab_to_hex("fifty", 10, 20), "must be numeric")
+})
+
+test_that("cielab_swatch explains NA CIELab values instead of CheckMatrix error", {
+  skip_if_not_installed("ggplot2")
+  skip_if_not_installed("colorspace")
+
+  all_na <- data.frame(
+    WineName = c("A", "B"),
+    CIELab_L = NA, CIELab_a = NA, CIELab_b = NA
+  )
+  expect_error(
+    cielab_swatch(all_na, file.path(tempdir(), "na_swatch.png")),
+    "All rows have NA CIELab values"
+  )
+
+  some_na <- data.frame(
+    WineName = c("Good", "Bad"),
+    CIELab_L = c(50, NA),
+    CIELab_a = c(10, NA),
+    CIELab_b = c(20, NA)
+  )
+  out_png <- file.path(tempdir(), "partial_swatch.png")
+  expect_warning(
+    cielab_swatch(some_na, out_png),
+    "Dropping 1 row\\(s\\) with NA CIELab values: Bad"
+  )
+  expect_true(file.exists(out_png))
+  unlink(out_png)
+})
+
+test_that("colour difference functions drop NA rows with a warning", {
+  lab_data <- data.frame(
+    EtOH = rep(c("CTRL", "T1"), each = 3),
+    CIELab_L = c(50, 52, NA, 60, 61, 59),
+    CIELab_a = c(10, 11, NA, 15, 14, 16),
+    CIELab_b = c(5, 6, NA, 8, 7, 9)
+  )
+
+  expect_warning(
+    diffs <- calc_colour_diff(lab_data),
+    "Dropping 1 of 6"
+  )
+  expect_false(any(is.na(diffs$dE76_cent)))
+
+  expect_warning(
+    pw <- calc_pairwise_dE(lab_data),
+    "Dropping 1 of 6"
+  )
+  expect_false(any(is.na(pw$dE_mean)))
+
+  # All-NA data gets an informative error, not an all-NA result
+  all_na <- lab_data
+  all_na[c("CIELab_L", "CIELab_a", "CIELab_b")] <- NA
+  expect_error(
+    calc_colour_diff(all_na),
+    "All rows have NA CIELab values"
+  )
+  expect_error(
+    calc_pairwise_dE(all_na),
+    "All rows have NA CIELab values"
+  )
+})
+
+test_that("full pipeline handles a 5 nm instrument scan end to end", {
+  # Simulates a spectrophotometer set to a 5 nm interval over 300-800 nm:
+  # 13 header lines, WL.nm. / X.T columns, percent transmission. This is the
+  # scan setting the OIV grid requires, so it must work with no warnings.
+  scan_dir <- file.path(tempdir(), "scan5nm_test")
+  dir.create(scan_dir, showWarnings = FALSE)
+  on.exit(unlink(scan_dir, recursive = TRUE), add = TRUE)
+
+  wl <- seq(300, 800, by = 5)
+  for (nm in c("Wine_A_1", "Wine_B_1")) {
+    trans_pct <- 100 * pmin(1, 0.05 + 0.9 * (wl - 300) / 500)
+    writeLines(
+      c(rep("instrument header", 13), "WL.nm.,X.T",
+        paste(wl, round(trans_pct, 3), sep = ",")),
+      file.path(scan_dir, paste0(nm, ".csv"))
+    )
+  }
+
+  suppressMessages(spectra <- process_spectrum(scan_dir, skip = 13))
+  expect_equal(sort(unique(spectra$sample_name)), c("Wine_A_1", "Wine_B_1"))
+
+  expect_no_warning(
+    result <- cielab_from_spectrum(spectra, sample_col = "sample_name")
+  )
+  expect_equal(nrow(result), 2)
+  expect_false(any(is.na(result$CIELab_L)))
+  expect_true(all(result$CIELab_L >= 0 & result$CIELab_L <= 100))
+})
+
 test_that("cielab_from_spectrum warns on percentage values", {
   wine_data <- generate_wine_spectra()
   # Convert to percentages (0-100)
