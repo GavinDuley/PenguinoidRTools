@@ -50,6 +50,10 @@ conditions by reducing multiple observations to their centroids first.
 This approach is robust to outliers and gives a single summary value
 per comparison.
 
+Rows with NA CIELab coordinates (e.g. samples that
+\code{\link{cielab_from_spectrum}} could not compute) are dropped with a
+warning before centroids are calculated.
+
 The function requires the \pkg{farver} package for CIE2000 calculations.
 }
 \examples{

@@ -100,7 +100,8 @@ cielab_spectroscopy_percentage_to_fraction <- function(transmission_pct) {
   }, numeric(1))
 
   if (any(is.na(T10_on_grid))) {
-    return(list(L = NA, a = NA, b = NA, C = NA, H = NA))
+    return(list(L = NA_real_, a = NA_real_, b = NA_real_,
+                C = NA_real_, H = NA_real_))
   }
 
   # Calculate tristimulus values
@@ -306,6 +307,14 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
             "Use cielab_spectroscopy_percentage_to_fraction() to convert.")
   }
 
+  # Rows without a wavelength can never be matched to the OIV grid; keep them
+  # out so they don't turn into all-NA rows when subsetting below.
+  na_lambda <- is.na(data_long$lambda)
+  if (any(na_lambda)) {
+    warning("Removed ", sum(na_lambda), " reading(s) with missing wavelength.")
+    data_long <- data_long[!na_lambda, ]
+  }
+
   # The OIV-MA-AS2-11 method specifies transmittance readings every 5 nm from
   # 380 to 780 nm, and its Table 1 coefficients exist only at those
   # wavelengths. Keep readings on the 5 nm grid and discard any
@@ -325,6 +334,14 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
   # Process each sample
   samples <- unique(data_long$.sample_id)
   oiv_grid <- .oiv_coefficients$lambda
+  na_result <- function(s) {
+    data.frame(
+      .sample_id = s,
+      CIELab_L = NA_real_, CIELab_a = NA_real_, CIELab_b = NA_real_,
+      CIELab_C = NA_real_, CIELab_H = NA_real_,
+      stringsAsFactors = FALSE
+    )
+  }
   results <- lapply(samples, function(s) {
     subset_data <- data_long[data_long$.sample_id == s, ]
 
@@ -336,12 +353,21 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
               paste(head(missing_wl, 3), collapse = ", "),
               " nm); returning NA. OIV-MA-AS2-11 requires readings every ",
               "5 nm from 380 to 780 nm.")
-      return(data.frame(
-        .sample_id = s,
-        CIELab_L = NA, CIELab_a = NA, CIELab_b = NA,
-        CIELab_C = NA, CIELab_H = NA,
-        stringsAsFactors = FALSE
-      ))
+      return(na_result(s))
+    }
+
+    # A wavelength can be present but carry only NA transmittance readings;
+    # that would otherwise propagate to an NA result with no explanation.
+    na_wl <- vapply(oiv_grid, function(l) {
+      all(is.na(subset_data$T[subset_data$lambda == l]))
+    }, logical(1))
+    if (any(na_wl)) {
+      warning("Sample '", s, "' has NA transmittance at ", sum(na_wl),
+              " OIV grid wavelength(s) (e.g. ",
+              paste(head(oiv_grid[na_wl], 3), collapse = ", "),
+              " nm); returning NA. Check the source data for missing or ",
+              "non-numeric readings.")
+      return(na_result(s))
     }
 
     lab <- .cielab_single(subset_data$lambda, subset_data$T, path_mm)
@@ -359,6 +385,19 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
 
   result <- do.call(rbind, results)
 
+  # Individual per-sample warnings are easy to miss (R suppresses output after
+  # 50 warnings), so summarise failures loudly. A single sample already gets a
+  # specific warning above.
+  n_failed <- sum(is.na(result$CIELab_L))
+  if (nrow(result) > 1 && n_failed == nrow(result)) {
+    warning("All ", nrow(result), " samples returned NA CIELab values. ",
+            "Run warnings() to see the per-sample reasons (usually missing ",
+            "OIV grid wavelengths or NA transmittance readings).")
+  } else if (n_failed > 0 && n_failed < nrow(result)) {
+    warning(n_failed, " of ", nrow(result), " samples returned NA CIELab ",
+            "values. Run warnings() to see the per-sample reasons.")
+  }
+
   # Rename sample column back to original name
   names(result)[names(result) == ".sample_id"] <- sample_col
 
@@ -368,6 +407,30 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
 # ==============================================================================
 # Colour Difference Functions
 # ==============================================================================
+
+# Internal: validate that `data` has CIELab coordinate columns and drop rows
+# where any coordinate is NA (e.g. samples cielab_from_spectrum() could not
+# compute), so they don't silently turn every group mean into NA.
+.drop_na_lab <- function(data, fn_name) {
+  lab_cols <- c("CIELab_L", "CIELab_a", "CIELab_b")
+  missing_cols <- setdiff(lab_cols, names(data))
+  if (length(missing_cols) > 0) {
+    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+  na_rows <- is.na(data$CIELab_L) | is.na(data$CIELab_a) | is.na(data$CIELab_b)
+  if (all(na_rows)) {
+    stop("All rows have NA CIELab values, so ", fn_name, "() has nothing to ",
+         "compare. This usually means cielab_from_spectrum() could not ",
+         "compute colours - run warnings() after calling it to see the ",
+         "per-sample reasons.")
+  }
+  if (any(na_rows)) {
+    warning("Dropping ", sum(na_rows), " of ", nrow(data), " row(s) with NA ",
+            "CIELab values before computing colour differences.")
+    data <- data[!na_rows, ]
+  }
+  data
+}
 
 #' Calculate chroma from CIELab a* and b* values
 #'
@@ -533,7 +596,8 @@ deltaE94 <- function(L1, a1, b1, L2, a2, b2) {
 #' @param b Numeric b* value(s)
 #' @param fixup Logical; if TRUE (default), colours outside the sRGB gamut are
 #'   clipped to the nearest representable colour rather than returned as NA.
-#' @return Character vector of hex colour strings (e.g. "#A03C2F").
+#' @return Character vector of hex colour strings (e.g. "#A03C2F"). Missing
+#'   coordinates give NA.
 #'
 #' @details Requires the \pkg{colorspace} package.
 #'
@@ -548,6 +612,17 @@ cielab_to_hex <- function(L, a, b, fixup = TRUE) {
   if (!requireNamespace("colorspace", quietly = TRUE)) {
     stop("Package 'colorspace' is required. Install with: install.packages('colorspace')")
   }
+  # An all-NA column is logical, which colorspace::LAB() rejects with the
+  # unhelpful "invalid color matrix"; coerce so NA coordinates give NA hex.
+  check_num <- function(x, name) {
+    if (!is.numeric(x) && !all(is.na(x))) {
+      stop("'", name, "' must be numeric, got ", class(x)[1])
+    }
+    as.double(x)
+  }
+  L <- check_num(L, "L")
+  a <- check_num(a, "a")
+  b <- check_num(b, "b")
   colorspace::hex(colorspace::LAB(L, a, b), fixup = fixup)
 }
 
@@ -586,6 +661,10 @@ cielab_to_hex <- function(L, a, b, fixup = TRUE) {
 #' This approach is robust to outliers and gives a single summary value
 #' per comparison.
 #'
+#' Rows with NA CIELab coordinates (e.g. samples that
+#' \code{\link{cielab_from_spectrum}} could not compute) are dropped with a
+#' warning before centroids are calculated.
+#'
 #' The function requires the \pkg{farver} package for CIE2000 calculations.
 #'
 #' @examples
@@ -618,6 +697,7 @@ calc_colour_diff <- function(data,
   if (!compare_by %in% names(data)) {
     stop("Column '", compare_by, "' not found in data")
   }
+  data <- .drop_na_lab(data, "calc_colour_diff")
   if (!reference_level %in% data[[compare_by]]) {
     stop("Reference level '", reference_level, "' not found in column '",
          compare_by, "'")
@@ -729,6 +809,10 @@ calc_colour_diff <- function(data,
 #' useful when you need confidence intervals or want to assess the spread
 #' of colour differences.
 #'
+#' Rows with NA CIELab coordinates (e.g. samples that
+#' \code{\link{cielab_from_spectrum}} could not compute) are dropped with a
+#' warning before pairwise differences are calculated.
+#'
 #' The function requires the \pkg{farver} package for CIE2000 calculations.
 #'
 #' @examples
@@ -770,6 +854,7 @@ calc_pairwise_dE <- function(data,
   if (!compare_by %in% names(data)) {
     stop("Column '", compare_by, "' not found in data")
   }
+  data <- .drop_na_lab(data, "calc_pairwise_dE")
   if (!reference_level %in% data[[compare_by]]) {
     stop("Reference level '", reference_level, "' not found in column '",
          compare_by, "'")
@@ -889,6 +974,10 @@ calc_pairwise_dE <- function(data,
 #' from the start, \code{"consecutive"} to see the rate of change between
 #' successive measurements, or \code{"both"} for the two stacked together.
 #'
+#' Rows with NA CIELab coordinates (e.g. samples that
+#' \code{\link{cielab_from_spectrum}} could not compute) are dropped with a
+#' warning before centroids are calculated.
+#'
 #' The function requires the \pkg{farver} package for CIE2000 calculations.
 #'
 #' @seealso \code{\link{calc_colour_diff}}, \code{\link{deltaE00}}
@@ -921,6 +1010,7 @@ cielab_kinetics <- function(data,
   if (length(missing_cols) > 0) {
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
+  data <- .drop_na_lab(data, "cielab_kinetics")
 
   # Determine the chronological order of the timepoints.
   ordered_times <- .order_timepoints(data[[time_col]], time_levels)
@@ -1094,6 +1184,10 @@ cielab_kinetics <- function(data,
 #'   \item SVG: Web-friendly vector format (requires svglite package)
 #' }
 #'
+#' Rows with NA CIELab coordinates (e.g. samples that
+#' \code{\link{cielab_from_spectrum}} could not compute) are dropped with a
+#' warning; if every row is NA an error explains where to look.
+#'
 #' @examples
 #' df <- data.frame(
 #'   WineName = c("Red", "White", "Rose"),
@@ -1142,6 +1236,22 @@ cielab_swatch <- function(CIELab,
   missing_cols <- setdiff(required_cols, names(CIELab))
   if (length(missing_cols) > 0) {
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+
+  # Samples with NA coordinates (e.g. cielab_from_spectrum() failures) cannot
+  # be drawn; drop them with an explanation rather than crash downstream.
+  na_rows <- is.na(CIELab$CIELab_L) | is.na(CIELab$CIELab_a) |
+    is.na(CIELab$CIELab_b)
+  if (all(na_rows)) {
+    stop("All rows have NA CIELab values, so no swatches can be drawn. ",
+         "This usually means cielab_from_spectrum() could not compute colours ",
+         "- run warnings() after calling it to see the per-sample reasons.")
+  }
+  if (any(na_rows)) {
+    warning("Dropping ", sum(na_rows), " row(s) with NA CIELab values: ",
+            paste(head(CIELab$WineName[na_rows], 5), collapse = ", "),
+            if (sum(na_rows) > 5) ", ..." else "")
+    CIELab <- CIELab[!na_rows, ]
   }
 
   n <- nrow(CIELab)
