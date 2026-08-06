@@ -58,10 +58,15 @@ significantly > 1 (> 1.1) trigger a warning - use
 Following the OIV-MA-AS2-11 procedure, the calculation uses transmittance
 readings at 5 nm intervals from 380 to 780 nm (the wavelengths at which the
 method's Table 1 coefficients are defined). Readings at intermediate
-wavelengths - e.g. from instruments scanning at 1 or 2 nm resolution - are
+wavelengths - e.g. from an instrument scanning at 1 nm resolution - are
 discarded with a message. A sample must have a reading at every 5 nm grid
-wavelength, otherwise NA is returned with a warning. Replicate readings at
-the same wavelength (e.g. when grouping replicates by wine) are averaged.
+wavelength, otherwise NA is returned with a warning. Note that this means
+the scan interval must land on every multiple of 5 nm: a 2 nm scan
+starting from an even wavelength (300, 302, ... nm) never measures the
+odd grid wavelengths (385, 395, ... nm), so every sample returns NA.
+Set the spectrophotometer to a 5 nm (or 1 nm) interval covering
+380-780 nm. Replicate readings at the same wavelength (e.g. when
+grouping replicates by wine) are averaged.
 }
 \examples{
 # Wide format example
