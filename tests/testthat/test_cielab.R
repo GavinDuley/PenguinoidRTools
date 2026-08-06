@@ -485,6 +485,35 @@ test_that("colour difference functions drop NA rows with a warning", {
   )
 })
 
+test_that("full pipeline handles a 5 nm instrument scan end to end", {
+  # Simulates a spectrophotometer set to a 5 nm interval over 300-800 nm:
+  # 13 header lines, WL.nm. / X.T columns, percent transmission. This is the
+  # scan setting the OIV grid requires, so it must work with no warnings.
+  scan_dir <- file.path(tempdir(), "scan5nm_test")
+  dir.create(scan_dir, showWarnings = FALSE)
+  on.exit(unlink(scan_dir, recursive = TRUE), add = TRUE)
+
+  wl <- seq(300, 800, by = 5)
+  for (nm in c("Wine_A_1", "Wine_B_1")) {
+    trans_pct <- 100 * pmin(1, 0.05 + 0.9 * (wl - 300) / 500)
+    writeLines(
+      c(rep("instrument header", 13), "WL.nm.,X.T",
+        paste(wl, round(trans_pct, 3), sep = ",")),
+      file.path(scan_dir, paste0(nm, ".csv"))
+    )
+  }
+
+  suppressMessages(spectra <- process_spectrum(scan_dir, skip = 13))
+  expect_equal(sort(unique(spectra$sample_name)), c("Wine_A_1", "Wine_B_1"))
+
+  expect_no_warning(
+    result <- cielab_from_spectrum(spectra, sample_col = "sample_name")
+  )
+  expect_equal(nrow(result), 2)
+  expect_false(any(is.na(result$CIELab_L)))
+  expect_true(all(result$CIELab_L >= 0 & result$CIELab_L <= 100))
+})
+
 test_that("cielab_from_spectrum warns on percentage values", {
   wine_data <- generate_wine_spectra()
   # Convert to percentages (0-100)
