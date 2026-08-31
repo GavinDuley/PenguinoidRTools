@@ -203,3 +203,36 @@ test_that("aovInteractSummaryTable computes means over observed values when NAs 
   expect_false(any(grepl("NaN", result[["tubers_na"]])))
 })
 
+test_that("aovSummaryTable skips columns with zero residual df instead of crashing", {
+  # 'sparse' has one observed value per group: the ANOVA would have zero
+  # residual degrees of freedom, which used to crash HSD.test with
+  # "missing value where TRUE/FALSE needed" (NaN Tukey p-values).
+  na_data <- data.frame(
+    EtOH = c("CTRL", "CTRL", "CTRL", "9PC", "9PC", "9PC"),
+    Dp_gluc = c(18.15, 14.89, 12.55, NA, 13.47, 10.25),
+    sparse = c(11.2, NA, NA, NA, 9.8, NA)
+  )
+
+  expect_no_error(result <- aovSummaryTable(na_data, group_var = "EtOH"))
+  expect_true(all(result[["sparse"]] == "insufficient data"))
+  # The healthy column is still analysed as usual.
+  expect_true(startsWith(result[result$Type == "9PC", "Dp_gluc"],
+                         as.character(signif(mean(c(13.47, 10.25)), 4))))
+})
+
+test_that("aovInteractSummaryTable skips columns with zero residual df instead of crashing", {
+  greenhouse1_data <- greenhouse$greenhouse1
+  # Keep exactly one observation per variety:method cell -> zero residual df.
+  combos <- paste(greenhouse1_data$variety, greenhouse1_data$method, sep = ":")
+  greenhouse1_data$sparse <- ifelse(duplicated(combos), NA_real_,
+                                    greenhouse1_data$tubers)
+
+  expect_no_error({
+    result <- aovInteractSummaryTable(greenhouse1_data, c("variety", "method"))
+  })
+  expect_true(all(result[["sparse"]] == "INSUFFICIENT DATA"))
+  # The healthy columns are still analysed as usual.
+  expect_true(any(grepl("^P-value-variety$", result$Type)))
+  expect_false(any(grepl("NaN", result[["tubers"]])))
+})
+

@@ -32,7 +32,10 @@ This function generates a table of means and key statistical
  columns (other than the grouping variable) are ignored. Missing values are
  allowed: observations with an NA in a given variable are dropped for that
  variable's ANOVA only, and group means are computed over the observed
- values. It also
+ values. Columns that cannot be analysed are filled with a label instead:
+ "invariant" (constant, all NA, or fewer than two groups observed) or
+ "insufficient data" (too few non-NA observations to estimate an error
+ term). It also
  appends rows for the Benjamini–Hochberg (BH) corrected p-values and significance.
  The output includes a “Type” column so that the row labels are exported to Excel.
 }
