@@ -29,6 +29,9 @@ A data frame summary table.
 \description{
 This function generates a table of means and key statistical
  values from an ANOVA that includes interactions among multiple grouping variables.
+ Missing values are allowed: observations with an NA in a given variable are
+ dropped for that variable's ANOVA only, and group means are computed over
+ the observed values.
  It also appends BH-corrected p-values and significance as additional rows.
  The BH correction is applied separately within each effect family (i.e. all
  p-values for a given main effect or interaction are corrected together,

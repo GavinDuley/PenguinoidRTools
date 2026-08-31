@@ -10,7 +10,10 @@
 #' @name aovSummaryTable
 #' @description This function generates a table of means and key statistical
 #'  values from an ANOVA for each numeric variable in a data frame. Non-numeric
-#'  columns (other than the grouping variable) are ignored. It also
+#'  columns (other than the grouping variable) are ignored. Missing values are
+#'  allowed: observations with an NA in a given variable are dropped for that
+#'  variable's ANOVA only, and group means are computed over the observed
+#'  values. It also
 #'  appends rows for the Benjamini–Hochberg (BH) corrected p-values and significance.
 #'  The output includes a “Type” column so that the row labels are exported to Excel.
 #'
@@ -20,13 +23,13 @@
 #' @param return_raw Logical; if TRUE, the raw outputs are assigned to a global variable.
 #' @param output_name The name of the global variable to store raw outputs.
 #' @return A data frame summary table.
-#' @importFrom stats aov as.formula p.adjust
+#' @importFrom stats aov as.formula na.omit p.adjust
 #' @importFrom agricolae HSD.test
 #' @importFrom openxlsx write.xlsx
 #' @import dplyr
 #' @importFrom gtools stars.pval
 #' @export
-aovSummaryTable <- function(aov_data, 
+aovSummaryTable <- function(aov_data,
                             group_var, 
                             output_file = NULL,
                             return_raw = FALSE,
@@ -48,11 +51,12 @@ aovSummaryTable <- function(aov_data,
   raw_outputs <- list()
 
   # Helper: TRUE if the column is effectively invariant for ANOVA purposes —
-  # either the response is constant, or group_var has <2 levels after
+  # either the response is constant or all NA (NAs don't count as a distinct
+  # value), or group_var has <2 levels after
   # removing NAs for that column (which would cause the "contrasts" error).
   col_is_invariant <- function(col_name) {
     col_vals <- aov_data[[col_name]]
-    if (length(unique(col_vals)) <= 1) return(TRUE)
+    if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return(TRUE)
     non_na_groups <- aov_data[[group_var]][!is.na(col_vals)]
     length(unique(non_na_groups)) < 2
   }
@@ -68,8 +72,11 @@ aovSummaryTable <- function(aov_data,
     }
 
     # Run ANOVA and Tukey HSD. Backticks allow non-syntactic column names.
+    # na.omit is set explicitly (rather than relying on the session's
+    # na.action option) so rows with an NA in this column are dropped for
+    # this column's ANOVA only.
     formula <- as.formula(paste0("`", columnname, "` ~ `", group_var, "`"))
-    t.anova <- aov(formula, data = aov_data)
+    t.anova <- aov(formula, data = aov_data, na.action = na.omit)
     test2 <- agricolae::HSD.test(t.anova, trt = group_var, group = TRUE)
 
     raw_outputs[[columnname]] <- list(aov = t.anova, tukey = test2)
@@ -143,6 +150,9 @@ aovSummaryTable <- function(aov_data,
 #' @name aovInteractSummaryTable
 #' @description This function generates a table of means and key statistical
 #'  values from an ANOVA that includes interactions among multiple grouping variables.
+#'  Missing values are allowed: observations with an NA in a given variable are
+#'  dropped for that variable's ANOVA only, and group means are computed over
+#'  the observed values.
 #'  It also appends BH-corrected p-values and significance as additional rows.
 #'  The BH correction is applied separately within each effect family (i.e. all
 #'  p-values for a given main effect or interaction are corrected together,
@@ -155,13 +165,13 @@ aovSummaryTable <- function(aov_data,
 #' @param return_raw Logical; if TRUE, raw outputs are assigned to a global variable.
 #' @param output_name The name of the global variable to store raw outputs.
 #' @return A data frame summary table.
-#' @importFrom stats aov as.formula p.adjust
+#' @importFrom stats aov as.formula na.omit p.adjust
 #' @importFrom agricolae HSD.test
 #' @importFrom openxlsx write.xlsx
 #' @import dplyr
 #' @importFrom gtools stars.pval
 #' @export
-aovInteractSummaryTable <- function(aov_data, 
+aovInteractSummaryTable <- function(aov_data,
                                     group_vars, 
                                     output_file = NULL,
                                     return_raw = FALSE,
@@ -174,11 +184,12 @@ aovInteractSummaryTable <- function(aov_data,
   }
 
   # Helper: TRUE if the column is effectively invariant for ANOVA purposes —
-  # either the response is constant, or any group_var has <2 levels after
+  # either the response is constant or all NA (NAs don't count as a distinct
+  # value), or any group_var has <2 levels after
   # removing NAs for that column (which would cause the "contrasts" error).
   col_is_invariant <- function(col_name) {
     col_vals <- aov_data[[col_name]]
-    if (length(unique(col_vals)) <= 1) return(TRUE)
+    if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return(TRUE)
     non_na_data <- aov_data[!is.na(col_vals), ]
     any(vapply(group_vars,
                function(gv) length(unique(non_na_data[[gv]])) < 2,
@@ -193,10 +204,13 @@ aovInteractSummaryTable <- function(aov_data,
 
   # Fit each model once, caching the ANOVA and Tukey HSD results.
   # Backticks allow non-syntactic column names.
+  # na.omit is set explicitly (rather than relying on the session's
+  # na.action option) so rows with an NA in a column are dropped for
+  # that column's ANOVA only.
   rhs <- paste0("`", group_vars, "`", collapse = " * ")
   models <- lapply(model_cols, function(col_name) {
     formula <- as.formula(paste0("`", col_name, "` ~ ", rhs))
-    t.anova <- aov(formula, data = aov_data)
+    t.anova <- aov(formula, data = aov_data, na.action = na.omit)
     test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
     list(aov = t.anova, tukey = test2)
   })

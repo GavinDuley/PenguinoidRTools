@@ -29,7 +29,10 @@ A data frame summary table.
 \description{
 This function generates a table of means and key statistical
  values from an ANOVA for each numeric variable in a data frame. Non-numeric
- columns (other than the grouping variable) are ignored. It also
+ columns (other than the grouping variable) are ignored. Missing values are
+ allowed: observations with an NA in a given variable are dropped for that
+ variable's ANOVA only, and group means are computed over the observed
+ values. It also
  appends rows for the Benjamini–Hochberg (BH) corrected p-values and significance.
  The output includes a “Type” column so that the row labels are exported to Excel.
 }
