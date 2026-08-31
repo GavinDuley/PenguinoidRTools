@@ -13,7 +13,10 @@
 #'  columns (other than the grouping variable) are ignored. Missing values are
 #'  allowed: observations with an NA in a given variable are dropped for that
 #'  variable's ANOVA only, and group means are computed over the observed
-#'  values. It also
+#'  values. Columns that cannot be analysed are filled with a label instead:
+#'  "invariant" (constant, all NA, or fewer than two groups observed) or
+#'  "insufficient data" (too few non-NA observations to estimate an error
+#'  term). It also
 #'  appends rows for the Benjamini–Hochberg (BH) corrected p-values and significance.
 #'  The output includes a “Type” column so that the row labels are exported to Excel.
 #'
@@ -50,24 +53,33 @@ aovSummaryTable <- function(aov_data,
   pvalues_vec <- numeric(0)
   raw_outputs <- list()
 
-  # Helper: TRUE if the column is effectively invariant for ANOVA purposes —
-  # either the response is constant or all NA (NAs don't count as a distinct
-  # value), or group_var has <2 levels after
-  # removing NAs for that column (which would cause the "contrasts" error).
-  col_is_invariant <- function(col_name) {
+  # Helper: NA if the column can be analysed, otherwise the label to fill its
+  # rows with. "invariant": the response is constant or all NA (NAs don't
+  # count as a distinct value), or group_var has <2 levels after removing NAs
+  # for that column (which would cause the "contrasts" error).
+  # "insufficient data": so few non-NA observations remain that the ANOVA has
+  # zero residual degrees of freedom (e.g. one observation per group), which
+  # makes HSD.test fail on NaN p-values.
+  col_skip_label <- function(col_name) {
     col_vals <- aov_data[[col_name]]
-    if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return(TRUE)
+    if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return("invariant")
     non_na_groups <- aov_data[[group_var]][!is.na(col_vals)]
-    length(unique(non_na_groups)) < 2
+    n_groups <- length(unique(non_na_groups))
+    if (n_groups < 2) return("invariant")
+    if (length(non_na_groups) - n_groups < 1) return("insufficient data")
+    NA_character_
   }
 
   # Analyse each numeric column; everything else (factors, characters, the
   # grouping variable itself) is ignored.
   numeric_cols <- colnames(aov_data)[sapply(aov_data, is.numeric)]
+  skip_labels <- character(0)
 
   for (columnname in numeric_cols) {
-    if (col_is_invariant(columnname)) {
-      summary_table[[columnname]] <- rep("invariant", length(base_rows))
+    skip_label <- col_skip_label(columnname)
+    if (!is.na(skip_label)) {
+      skip_labels[columnname] <- skip_label
+      summary_table[[columnname]] <- rep(skip_label, length(base_rows))
       next
     }
 
@@ -114,7 +126,7 @@ aovSummaryTable <- function(aov_data,
   }
 
   # Compute BH-corrected p-values across all analysed variables and append
-  # them as two new rows. Invariant columns are labelled as such.
+  # them as two new rows. Skipped columns keep their skip label.
   bh_p_values <- p.adjust(pvalues_vec, method = "BH")
   bh_rows <- data.frame(Type = c("BH-Corrected-P-value", "BH-Significant"),
                         stringsAsFactors = FALSE)
@@ -126,7 +138,7 @@ aovSummaryTable <- function(aov_data,
         ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT")
       )
     } else {
-      bh_rows[[col]] <- c("invariant", "invariant")
+      bh_rows[[col]] <- rep(skip_labels[[col]], 2)
     }
   }
   summary_table <- rbind(summary_table, bh_rows)
@@ -152,7 +164,10 @@ aovSummaryTable <- function(aov_data,
 #'  values from an ANOVA that includes interactions among multiple grouping variables.
 #'  Missing values are allowed: observations with an NA in a given variable are
 #'  dropped for that variable's ANOVA only, and group means are computed over
-#'  the observed values.
+#'  the observed values. Columns that cannot be analysed are filled with a
+#'  label instead: "INVARIANT" (constant, all NA, or fewer than two levels of
+#'  a grouping variable observed) or "INSUFFICIENT DATA" (too few non-NA
+#'  observations to estimate an error term).
 #'  It also appends BH-corrected p-values and significance as additional rows.
 #'  The BH correction is applied separately within each effect family (i.e. all
 #'  p-values for a given main effect or interaction are corrected together,
@@ -183,24 +198,33 @@ aovInteractSummaryTable <- function(aov_data,
     aov_data[[gv]] <- as.factor(aov_data[[gv]])
   }
 
-  # Helper: TRUE if the column is effectively invariant for ANOVA purposes —
-  # either the response is constant or all NA (NAs don't count as a distinct
-  # value), or any group_var has <2 levels after
-  # removing NAs for that column (which would cause the "contrasts" error).
-  col_is_invariant <- function(col_name) {
+  # Helper: NA if the column can be analysed, otherwise the label to fill its
+  # rows with. "INVARIANT": the response is constant or all NA (NAs don't
+  # count as a distinct value), or any group_var has <2 levels after removing
+  # NAs for that column (which would cause the "contrasts" error).
+  # "INSUFFICIENT DATA": so few non-NA observations remain that the ANOVA has
+  # zero residual degrees of freedom (e.g. one observation per treatment
+  # combination), which makes HSD.test fail on NaN p-values.
+  col_skip_label <- function(col_name) {
     col_vals <- aov_data[[col_name]]
-    if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return(TRUE)
+    if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return("INVARIANT")
     non_na_data <- aov_data[!is.na(col_vals), ]
-    any(vapply(group_vars,
-               function(gv) length(unique(non_na_data[[gv]])) < 2,
-               logical(1)))
+    if (any(vapply(group_vars,
+                   function(gv) length(unique(non_na_data[[gv]])) < 2,
+                   logical(1)))) {
+      return("INVARIANT")
+    }
+    n_cells <- nrow(unique(non_na_data[group_vars]))
+    if (nrow(non_na_data) - n_cells < 1) return("INSUFFICIENT DATA")
+    NA_character_
   }
 
   # Analyse each numeric column; everything else (factors, characters, the
   # grouping variables themselves) is ignored.
   numeric_cols <- colnames(aov_data)[sapply(aov_data, is.numeric)]
-  invariant_cols <- Filter(col_is_invariant, numeric_cols)
-  model_cols <- setdiff(numeric_cols, invariant_cols)
+  skip_labels <- vapply(numeric_cols, col_skip_label, character(1))
+  skipped_cols <- numeric_cols[!is.na(skip_labels)]
+  model_cols <- numeric_cols[is.na(skip_labels)]
 
   # Fit each model once, caching the ANOVA and Tukey HSD results.
   # Backticks allow non-syntactic column names.
@@ -275,12 +299,12 @@ aovInteractSummaryTable <- function(aov_data,
     summary_list[[col_name]] <- c(group_summaries, effect_stats)
   }
 
-  # Populate invariant columns with "INVARIANT" for every row
-  for (col_name in invariant_cols) {
-    summary_list[[col_name]] <- rep("INVARIANT", length(row_labels))
+  # Populate skipped columns with their skip label for every row
+  for (col_name in skipped_cols) {
+    summary_list[[col_name]] <- rep(skip_labels[[col_name]], length(row_labels))
   }
 
-  # Restore original column order (non-invariant + invariant may be out of order)
+  # Restore original column order (analysed + skipped may be out of order)
   summary_list <- summary_list[intersect(numeric_cols, names(summary_list))]
 
   # Create the summary table
@@ -304,7 +328,7 @@ aovInteractSummaryTable <- function(aov_data,
           ifelse(bh_val <= 0.05, "SIGNIFICANT", "NOT SIGNIFICANT")
         )
       } else {
-        bh_rows[[col]] <- c("INVARIANT", "INVARIANT")
+        bh_rows[[col]] <- rep(skip_labels[[col]], 2)
       }
     }
     summary_table <- rbind(summary_table, bh_rows)
