@@ -3,6 +3,23 @@
 # Copyright (c) 2024 onwards, Gavin Duley
 # Licenced under the GPL-3.0 licence
 
+# Internal helper: warn about columns that were skipped so the reason is
+# visible in the console as well as in the summary table. skip_labels is a
+# named character vector of column name -> skip label.
+warn_skipped_columns <- function(skip_labels) {
+  if (length(skip_labels) == 0) return(invisible(NULL))
+  warning(
+    "The following columns could not be analysed and were filled with a ",
+    "label instead: ",
+    paste0(names(skip_labels), " (", skip_labels, ")", collapse = ", "),
+    ". They may be invariant or contain too many missing values - please ",
+    "check them, and consider removing them from the dataset prior to ",
+    "analysis.",
+    call. = FALSE
+  )
+  invisible(NULL)
+}
+
 # aovSummaryTable -------------------------------------------------------------
 
 #' AoV summary table
@@ -13,10 +30,12 @@
 #'  columns (other than the grouping variable) are ignored. Missing values are
 #'  allowed: observations with an NA in a given variable are dropped for that
 #'  variable's ANOVA only, and group means are computed over the observed
-#'  values. Columns that cannot be analysed are filled with a label instead:
-#'  "invariant" (constant, all NA, or fewer than two groups observed) or
-#'  "insufficient data" (too few non-NA observations to estimate an error
-#'  term). It also
+#'  values. Columns that cannot be analysed are filled with a label instead,
+#'  and a warning lists them: "invariant" (constant, all NA, or fewer than
+#'  two groups observed), "insufficient data" (fewer than two residual
+#'  degrees of freedom left after removing NAs, the minimum Tukey's test can
+#'  handle), or "not analysable" (the model or Tukey test failed for another
+#'  reason). It also
 #'  appends rows for the Benjamini–Hochberg (BH) corrected p-values and significance.
 #'  The output includes a “Type” column so that the row labels are exported to Excel.
 #'
@@ -57,16 +76,16 @@ aovSummaryTable <- function(aov_data,
   # rows with. "invariant": the response is constant or all NA (NAs don't
   # count as a distinct value), or group_var has <2 levels after removing NAs
   # for that column (which would cause the "contrasts" error).
-  # "insufficient data": so few non-NA observations remain that the ANOVA has
-  # zero residual degrees of freedom (e.g. one observation per group), which
-  # makes HSD.test fail on NaN p-values.
+  # "insufficient data": fewer than two residual degrees of freedom remain
+  # after removing NAs. Two is the minimum HSD.test can handle: R's
+  # qtukey/ptukey return NaN for df < 2, which crashes HSD.test.
   col_skip_label <- function(col_name) {
     col_vals <- aov_data[[col_name]]
     if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return("invariant")
     non_na_groups <- aov_data[[group_var]][!is.na(col_vals)]
     n_groups <- length(unique(non_na_groups))
     if (n_groups < 2) return("invariant")
-    if (length(non_na_groups) - n_groups < 1) return("insufficient data")
+    if (length(non_na_groups) - n_groups < 2) return("insufficient data")
     NA_character_
   }
 
@@ -86,12 +105,27 @@ aovSummaryTable <- function(aov_data,
     # Run ANOVA and Tukey HSD. Backticks allow non-syntactic column names.
     # na.omit is set explicitly (rather than relying on the session's
     # na.action option) so rows with an NA in this column are dropped for
-    # this column's ANOVA only.
-    formula <- as.formula(paste0("`", columnname, "` ~ `", group_var, "`"))
-    t.anova <- aov(formula, data = aov_data, na.action = na.omit)
-    test2 <- agricolae::HSD.test(t.anova, trt = group_var, group = TRUE)
+    # this column's ANOVA only. If the model or Tukey test still fails on
+    # degenerate data despite the checks above, skip the column with a
+    # warning naming it rather than failing the whole table.
+    fit <- tryCatch({
+      formula <- as.formula(paste0("`", columnname, "` ~ `", group_var, "`"))
+      t.anova <- aov(formula, data = aov_data, na.action = na.omit)
+      test2 <- agricolae::HSD.test(t.anova, trt = group_var, group = TRUE)
+      list(aov = t.anova, tukey = test2)
+    }, error = function(e) e)
 
-    raw_outputs[[columnname]] <- list(aov = t.anova, tukey = test2)
+    if (inherits(fit, "error")) {
+      warning("Column '", columnname, "' could not be analysed: ",
+              conditionMessage(fit), call. = FALSE)
+      skip_labels[columnname] <- "not analysable"
+      summary_table[[columnname]] <- rep("not analysable", length(base_rows))
+      next
+    }
+    t.anova <- fit$aov
+    test2 <- fit$tukey
+
+    raw_outputs[[columnname]] <- fit
 
     # Build group summaries matching the factor levels.
     group_summaries <- rep("Not available", length(group_levels))
@@ -143,15 +177,17 @@ aovSummaryTable <- function(aov_data,
   }
   summary_table <- rbind(summary_table, bh_rows)
 
+  warn_skipped_columns(skip_labels)
+
   # Write the table to Excel (the "Type" column is now included).
   if (!is.null(output_file)) {
     openxlsx::write.xlsx(summary_table, output_file, rowNames = FALSE)
   }
-  
+
   if (return_raw) {
     assign(output_name, raw_outputs, envir = .GlobalEnv)
   }
-  
+
   return(summary_table)
 }
 
@@ -165,9 +201,11 @@ aovSummaryTable <- function(aov_data,
 #'  Missing values are allowed: observations with an NA in a given variable are
 #'  dropped for that variable's ANOVA only, and group means are computed over
 #'  the observed values. Columns that cannot be analysed are filled with a
-#'  label instead: "INVARIANT" (constant, all NA, or fewer than two levels of
-#'  a grouping variable observed) or "INSUFFICIENT DATA" (too few non-NA
-#'  observations to estimate an error term).
+#'  label instead, and a warning lists them: "INVARIANT" (constant, all NA,
+#'  or fewer than two levels of a grouping variable observed),
+#'  "INSUFFICIENT DATA" (fewer than two residual degrees of freedom left
+#'  after removing NAs, the minimum Tukey's test can handle), or
+#'  "NOT ANALYSABLE" (the model or Tukey test failed for another reason).
 #'  It also appends BH-corrected p-values and significance as additional rows.
 #'  The BH correction is applied separately within each effect family (i.e. all
 #'  p-values for a given main effect or interaction are corrected together,
@@ -202,9 +240,9 @@ aovInteractSummaryTable <- function(aov_data,
   # rows with. "INVARIANT": the response is constant or all NA (NAs don't
   # count as a distinct value), or any group_var has <2 levels after removing
   # NAs for that column (which would cause the "contrasts" error).
-  # "INSUFFICIENT DATA": so few non-NA observations remain that the ANOVA has
-  # zero residual degrees of freedom (e.g. one observation per treatment
-  # combination), which makes HSD.test fail on NaN p-values.
+  # "INSUFFICIENT DATA": fewer than two residual degrees of freedom remain
+  # after removing NAs. Two is the minimum HSD.test can handle: R's
+  # qtukey/ptukey return NaN for df < 2, which crashes HSD.test.
   col_skip_label <- function(col_name) {
     col_vals <- aov_data[[col_name]]
     if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return("INVARIANT")
@@ -215,7 +253,7 @@ aovInteractSummaryTable <- function(aov_data,
       return("INVARIANT")
     }
     n_cells <- nrow(unique(non_na_data[group_vars]))
-    if (nrow(non_na_data) - n_cells < 1) return("INSUFFICIENT DATA")
+    if (nrow(non_na_data) - n_cells < 2) return("INSUFFICIENT DATA")
     NA_character_
   }
 
@@ -223,7 +261,6 @@ aovInteractSummaryTable <- function(aov_data,
   # grouping variables themselves) is ignored.
   numeric_cols <- colnames(aov_data)[sapply(aov_data, is.numeric)]
   skip_labels <- vapply(numeric_cols, col_skip_label, character(1))
-  skipped_cols <- numeric_cols[!is.na(skip_labels)]
   model_cols <- numeric_cols[is.na(skip_labels)]
 
   # Fit each model once, caching the ANOVA and Tukey HSD results.
@@ -233,12 +270,27 @@ aovInteractSummaryTable <- function(aov_data,
   # that column's ANOVA only.
   rhs <- paste0("`", group_vars, "`", collapse = " * ")
   models <- lapply(model_cols, function(col_name) {
-    formula <- as.formula(paste0("`", col_name, "` ~ ", rhs))
-    t.anova <- aov(formula, data = aov_data, na.action = na.omit)
-    test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
-    list(aov = t.anova, tukey = test2)
+    tryCatch({
+      formula <- as.formula(paste0("`", col_name, "` ~ ", rhs))
+      t.anova <- aov(formula, data = aov_data, na.action = na.omit)
+      test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
+      list(aov = t.anova, tukey = test2)
+    }, error = function(e) e)
   })
   names(models) <- model_cols
+
+  # If a model or Tukey test still fails on degenerate data despite the
+  # checks above, skip that column with a warning naming it rather than
+  # failing the whole table.
+  failed <- vapply(models, inherits, logical(1), what = "error")
+  for (col_name in model_cols[failed]) {
+    warning("Column '", col_name, "' could not be analysed: ",
+            conditionMessage(models[[col_name]]), call. = FALSE)
+    skip_labels[col_name] <- "NOT ANALYSABLE"
+  }
+  models <- models[!failed]
+  model_cols <- model_cols[!failed]
+  skipped_cols <- numeric_cols[!is.na(skip_labels)]
   raw_outputs <- models
 
   # Collect all treatment-combination row names across variables.
@@ -334,14 +386,16 @@ aovInteractSummaryTable <- function(aov_data,
     summary_table <- rbind(summary_table, bh_rows)
   }
 
+  warn_skipped_columns(skip_labels[!is.na(skip_labels)])
+
   if (!is.null(output_file)) {
     openxlsx::write.xlsx(summary_table, output_file, rowNames = FALSE)
   }
-  
+
   if (return_raw) {
     assign(output_name, raw_outputs, envir = .GlobalEnv)
   }
-  
+
   return(summary_table)
 
 }

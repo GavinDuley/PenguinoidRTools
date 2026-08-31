@@ -32,9 +32,11 @@ This function generates a table of means and key statistical
  Missing values are allowed: observations with an NA in a given variable are
  dropped for that variable's ANOVA only, and group means are computed over
  the observed values. Columns that cannot be analysed are filled with a
- label instead: "INVARIANT" (constant, all NA, or fewer than two levels of
- a grouping variable observed) or "INSUFFICIENT DATA" (too few non-NA
- observations to estimate an error term).
+ label instead, and a warning lists them: "INVARIANT" (constant, all NA,
+ or fewer than two levels of a grouping variable observed),
+ "INSUFFICIENT DATA" (fewer than two residual degrees of freedom left
+ after removing NAs, the minimum Tukey's test can handle), or
+ "NOT ANALYSABLE" (the model or Tukey test failed for another reason).
  It also appends BH-corrected p-values and significance as additional rows.
  The BH correction is applied separately within each effect family (i.e. all
  p-values for a given main effect or interaction are corrected together,
