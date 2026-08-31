@@ -133,3 +133,73 @@ test_that("aovSummaryTable handles columns present for only one factor level wit
   expect_true(all(result[["single_factor_col"]] == "invariant"))
 })
 
+test_that("aovSummaryTable computes group means over observed values when NAs are present", {
+  na_data <- data.frame(
+    EtOH = c("CTRL", "CTRL", "CTRL", "9PC", "9PC", "9PC"),
+    Dp_gluc = c(18.15, 14.89, 12.55, NA, 13.47, 10.25)
+  )
+
+  result <- aovSummaryTable(na_data, group_var = "EtOH")
+
+  # Means must be over the observed values only (NA is "not measured",
+  # not zero): mean(13.47, 10.25) = 11.86, not mean(0, 13.47, 10.25).
+  expect_true(startsWith(result[result$Type == "9PC", "Dp_gluc"],
+                         as.character(signif(mean(c(13.47, 10.25)), 4))))
+  expect_true(startsWith(result[result$Type == "CTRL", "Dp_gluc"],
+                         as.character(signif(mean(c(18.15, 14.89, 12.55)), 4))))
+
+  # P- and F-values must match a direct aov() fit, which drops NA rows.
+  direct <- summary(aov(Dp_gluc ~ EtOH, data = na_data))[[1]]
+  expect_true(startsWith(result[result$Type == "F-value", "Dp_gluc"],
+                         as.character(signif(direct[1, "F value"], 4))))
+})
+
+test_that("aovSummaryTable treats constant-except-NA and all-NA columns as invariant", {
+  na_data <- data.frame(
+    EtOH = c("CTRL", "CTRL", "CTRL", "9PC", "9PC", "9PC"),
+    Dp_gluc = c(18.15, 14.89, 12.55, NA, 13.47, 10.25),
+    const_na = c(5, 5, 5, NA, 5, 5),
+    all_na = NA_real_
+  )
+
+  result <- aovSummaryTable(na_data, group_var = "EtOH")
+
+  expect_true(all(result[["const_na"]] == "invariant"))
+  expect_true(all(result[["all_na"]] == "invariant"))
+})
+
+test_that("aovSummaryTable drops NA rows even if the session na.action is na.fail", {
+  na_data <- data.frame(
+    EtOH = c("CTRL", "CTRL", "CTRL", "9PC", "9PC", "9PC"),
+    Dp_gluc = c(18.15, 14.89, 12.55, NA, 13.47, 10.25)
+  )
+
+  old_opt <- options(na.action = "na.fail")
+  on.exit(options(old_opt), add = TRUE)
+
+  expect_no_error(aovSummaryTable(na_data, group_var = "EtOH"))
+})
+
+test_that("aovInteractSummaryTable computes means over observed values when NAs are present", {
+  greenhouse1_data <- greenhouse$greenhouse1
+  greenhouse1_data$tubers_na <- greenhouse1_data$tubers
+  greenhouse1_data$tubers_na[1] <- NA_real_
+  greenhouse1_data$const_na <- 42
+  greenhouse1_data$const_na[2] <- NA_real_
+
+  result <- aovInteractSummaryTable(greenhouse1_data, c("variety", "method"))
+
+  # The treatment combination that lost an observation should show the mean
+  # of the remaining observed values.
+  combo <- paste(greenhouse1_data$variety[1], greenhouse1_data$method[1], sep = ":")
+  all_combos <- paste(greenhouse1_data$variety, greenhouse1_data$method, sep = ":")
+  observed <- greenhouse1_data$tubers_na[!is.na(greenhouse1_data$tubers_na) &
+                                           all_combos == combo]
+  expect_true(startsWith(result[result$Type == combo, "tubers_na"],
+                         as.character(signif(mean(observed), 4))))
+
+  # Constant-except-NA columns are invariant, and no NaN leaks into the table.
+  expect_true(all(result[["const_na"]] == "INVARIANT"))
+  expect_false(any(grepl("NaN", result[["tubers_na"]])))
+})
+
