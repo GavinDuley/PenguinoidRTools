@@ -327,3 +327,102 @@ test_that("observations with a missing group do not count towards the residual d
   res2 <- suppressWarnings(aovInteractSummaryTable(d2, c("g", "h")))
   expect_true(all(res2$y == "INSUFFICIENT DATA"))
 })
+
+# Type II sums of squares ------------------------------------------------------
+
+unbalanced_two_way <- function() {
+  set.seed(101)
+  d <- expand.grid(A = c("a", "b", "c"), B = c("x", "y"), rep = 1:5,
+                   stringsAsFactors = FALSE)
+  d$y <- rnorm(nrow(d)) + (d$A == "b") + 0.8 * (d$B == "y")
+  d$z <- rnorm(nrow(d))
+  # Remove observations unevenly so the design is unbalanced
+  d[-c(1, 2, 3, 7, 13, 14, 20), c("A", "B", "y", "z")]
+}
+
+p_values <- function(tab, col) {
+  rows <- grepl("^P-value-", tab$Type)
+  setNames(as.numeric(sub(" .*$", "", tab[[col]][rows])),
+           sub("^P-value-", "", tab$Type[rows]))
+}
+
+test_that("results do not depend on the order of group_vars in an unbalanced design", {
+  d <- unbalanced_two_way()
+  ab <- suppressWarnings(aovInteractSummaryTable(d, c("A", "B")))
+  ba <- suppressWarnings(aovInteractSummaryTable(d, c("B", "A")))
+
+  p_ab <- p_values(ab, "y")
+  p_ba <- p_values(ba, "y")
+  expect_equal(p_ab[["A"]], p_ba[["A"]])
+  expect_equal(p_ab[["B"]], p_ba[["B"]])
+  expect_equal(p_ab[["A:B"]], p_ba[["B:A"]])
+
+  # ... unlike the sequential (Type I) tests of summary(aov()), which do
+  s_ab <- summary(aov(y ~ A * B, d))[[1]]
+  s_ba <- summary(aov(y ~ B * A, d))[[1]]
+  rownames(s_ab) <- trimws(rownames(s_ab))
+  rownames(s_ba) <- trimws(rownames(s_ba))
+  expect_false(isTRUE(all.equal(s_ab["A", "Pr(>F)"], s_ba["A", "Pr(>F)"])))
+})
+
+test_that("an unbalanced design gives a warning naming the columns; a balanced one does not", {
+  d <- unbalanced_two_way()
+  expect_warning(aovInteractSummaryTable(d, c("A", "B")),
+                 "Unbalanced design.*for: y, z.*Type II")
+
+  balanced <- expand.grid(A = c("a", "b", "c"), B = c("x", "y"), rep = 1:4,
+                          stringsAsFactors = FALSE)
+  set.seed(102)
+  balanced$y <- rnorm(nrow(balanced))
+  expect_no_warning(aovInteractSummaryTable(balanced[c("A", "B", "y")], c("A", "B")))
+
+  # Balanced overall, but an NA makes one column unbalanced
+  balanced$w <- rnorm(nrow(balanced))
+  balanced$w[1] <- NA
+  expect_warning(aovInteractSummaryTable(balanced[c("A", "B", "y", "w")], c("A", "B")),
+                 "for: w\\.")
+})
+
+test_that("Type II results equal summary(aov()) in a balanced design", {
+  balanced <- expand.grid(A = c("a", "b", "c"), B = c("x", "y"), rep = 1:4,
+                          stringsAsFactors = FALSE)
+  set.seed(103)
+  balanced$y <- rnorm(nrow(balanced)) + (balanced$A == "c")
+  fit <- aov(y ~ A * B, balanced)
+  type1 <- summary(fit)[[1]]
+  type2 <- PenguinoidRTools:::type2_anova(fit)
+  expect_equal(type2[["Pr(>F)"]], type1[["Pr(>F)"]][1:3])
+  expect_equal(type2[["F value"]], type1[["F value"]][1:3])
+  expect_equal(type2[["Df"]], type1[["Df"]][1:3])
+})
+
+test_that("Type II results match car::Anova in unbalanced two- and three-way designs", {
+  skip_if_not_installed("car")
+  d <- unbalanced_two_way()
+  fit2 <- aov(y ~ A * B, d)
+  ref2 <- car::Anova(fit2, type = 2)
+  mine2 <- PenguinoidRTools:::type2_anova(fit2)
+  expect_equal(mine2[["Pr(>F)"]], ref2[rownames(mine2), "Pr(>F)"])
+  expect_equal(mine2[["Sum Sq"]], ref2[rownames(mine2), "Sum Sq"])
+
+  set.seed(104)
+  d3 <- data.frame(A = sample(c("a", "b"), 70, TRUE), B = sample(c("x", "y"), 70, TRUE),
+                   C = sample(c("p", "q", "r"), 70, TRUE))
+  d3$y <- rnorm(70) + (d3$A == "b") + (d3$C == "r")
+  fit3 <- aov(y ~ A * B * C, d3)
+  ref3 <- car::Anova(fit3, type = 2)
+  mine3 <- PenguinoidRTools:::type2_anova(fit3)
+  expect_equal(mine3[["Pr(>F)"]], ref3[rownames(mine3), "Pr(>F)"])
+  expect_equal(mine3[["F value"]], ref3[rownames(mine3), "F value"])
+})
+
+test_that("return_raw stores the Type II table alongside the aov and Tukey objects", {
+  d <- unbalanced_two_way()
+  suppressWarnings(aovInteractSummaryTable(d, c("A", "B"), return_raw = TRUE,
+                                           output_name = ".prt_test_raw"))
+  raw <- get(".prt_test_raw", envir = .GlobalEnv)
+  on.exit(rm(".prt_test_raw", envir = .GlobalEnv))
+  expect_named(raw$y, c("aov", "tukey", "type2", "balanced"))
+  expect_equal(rownames(raw$y$type2), c("A", "B", "A:B"))
+  expect_false(raw$y$balanced)
+})

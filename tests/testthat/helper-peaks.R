@@ -7,7 +7,7 @@
 # defined; each is present in a specified subset of samples. Two of them
 # (P5 = 8.00, P6 = 8.05 min) form a deliberately nasty close pair whose
 # per-sample observed RTs overlap once drift is applied -- the case the
-# current greedy, single-reference aligner mishandles.
+# original greedy, single-reference aligner mishandled.
 
 # Return list(peaks, truth):
 #   peaks  - long data frame as produced by read_agilent_dad_peaks():

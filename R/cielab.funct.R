@@ -9,6 +9,16 @@
 #
 # Dependencies: ggplot2, colorspace (for visualization functions)
 
+# Column names used inside dplyr and ggplot2 expressions; declared here so
+# R CMD check does not report them as undefined global variables.
+utils::globalVariables(c(
+  "CIELab_L", "CIELab_a", "CIELab_b", "L", "a", "b", "C", "h",
+  "L_ref", "a_ref", "b_ref", "C_ref", "h_ref",
+  "CIELab_L_ref", "CIELab_a_ref", "CIELab_b_ref",
+  "CIELab_L_target", "CIELab_a_target", "CIELab_b_target",
+  "dE", "hex", "label", "label_col"
+))
+
 # ==============================================================================
 # OIV Method Coefficients (Table 1)
 # ==============================================================================
@@ -259,7 +269,7 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
     stop("Cannot detect data format. Expected either:\n",
          "  - Wide format: columns like X780, X700, X600, etc.\n",
          "  - Long format: columns 'lambda' and 'T'\n",
-         "Found columns: ", paste(head(names(data), 10), collapse = ", "))
+         "Found columns: ", paste(utils::head(names(data), 10), collapse = ", "))
   }
 
   # Auto-detect sample column if not specified
@@ -400,7 +410,7 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
     if (length(missing_wl) > 0) {
       warning("Sample '", s, "' is missing readings at ", length(missing_wl),
               " of the ", length(oiv_grid), " OIV grid wavelengths (e.g. ",
-              paste(head(missing_wl, 3), collapse = ", "),
+              paste(utils::head(missing_wl, 3), collapse = ", "),
               " nm); returning NA. OIV-MA-AS2-11 requires readings every ",
               "5 nm from 380 to 780 nm.")
       return(na_result(s))
@@ -414,7 +424,7 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
     if (any(na_wl)) {
       warning("Sample '", s, "' has NA transmittance at ", sum(na_wl),
               " OIV grid wavelength(s) (e.g. ",
-              paste(head(oiv_grid[na_wl], 3), collapse = ", "),
+              paste(utils::head(oiv_grid[na_wl], 3), collapse = ", "),
               " nm); returning NA. Check the source data for missing or ",
               "non-numeric readings.")
       return(na_result(s))
@@ -1332,7 +1342,7 @@ cielab_swatch <- function(CIELab,
   }
   if (any(na_rows)) {
     warning("Dropping ", sum(na_rows), " row(s) with NA CIELab values: ",
-            paste(head(CIELab$WineName[na_rows], 5), collapse = ", "),
+            paste(utils::head(CIELab$WineName[na_rows], 5), collapse = ", "),
             if (sum(na_rows) > 5) ", ..." else "")
     CIELab <- CIELab[!na_rows, ]
   }
@@ -1484,7 +1494,7 @@ process_spectrum <- function(folder_path,
 
     # Read CSV with specified skip
     spec_data <- tryCatch(
-      read.csv(filepath, skip = skip),
+      utils::read.csv(filepath, skip = skip),
       error = function(e) {
         warning("Failed to read file: ", filepath, "\n  ", e$message)
         return(NULL)

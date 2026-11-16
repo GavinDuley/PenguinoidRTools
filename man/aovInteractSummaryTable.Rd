@@ -44,15 +44,19 @@ This function generates a table of means and key statistical
  correctly to Excel.
 }
 \details{
-\strong{Unbalanced designs.} The model is fitted with \code{aov()}, which
-uses sequential (Type I) sums of squares: each effect is tested after the
-effects listed before it. In a balanced design (the same number of
-observations in every combination of the grouping variables) this makes no
-difference. In an unbalanced design the P-values and F-values of the main
-effects depend on the order of \code{group_vars}, so
-\code{c("A", "B")} and \code{c("B", "A")} can give different results; the
-highest-order interaction, the group means and the Tukey letters do not
-depend on the order. Note that a design can be balanced overall but
-unbalanced for a particular variable, because observations with an NA in
-that variable are dropped for its ANOVA.
+\strong{Sums of squares and unbalanced designs.} P-values and F-values use
+Type II sums of squares: each effect is tested after all other effects
+that do not contain it (a main effect is adjusted for the other main
+effects, but not for interactions it is part of), against the residual
+mean square of the full model. The results therefore do not depend on the
+order of \code{group_vars}. In a balanced design (the same number of
+observations in every combination of the grouping variables) Type II
+results are identical to the sequential (Type I) results of
+\code{summary(aov())}. In an unbalanced design they differ, and a warning
+names the affected variables. Note that a design can be balanced overall
+but unbalanced for a particular variable, because observations with an NA
+in that variable are dropped for its ANOVA. Group means and Tukey letters
+come from the full model and are unaffected. With \code{return_raw = TRUE}
+the Type II table for each variable is stored as \code{type2} alongside
+the \code{aov} and \code{tukey} objects.
 }

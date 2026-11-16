@@ -42,7 +42,7 @@ A long-format data frame with one row per detected peak:
     \item{area}{Peak area (numeric).}
   }
   Sample order in the output matches order of appearance in the file.
-  The first sample is used as the alignment reference by
+  The first sample is used as the reference for drift estimation by
   \code{\link{align_peaks_by_rt}}, so file order matters.
 }
 \description{
