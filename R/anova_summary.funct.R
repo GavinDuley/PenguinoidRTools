@@ -20,6 +20,65 @@ warn_skipped_columns <- function(skip_labels) {
   invisible(NULL)
 }
 
+# Internal helper: the summary tables use a "Type" column for the row labels,
+# so a response variable with that name would silently overwrite them.
+stop_if_type_column <- function(numeric_cols) {
+  if ("Type" %in% numeric_cols) {
+    stop("aov_data has a numeric column named 'Type', which clashes with the ",
+         "row-label column of the summary table. Please rename it before ",
+         "analysis.", call. = FALSE)
+  }
+  invisible(NULL)
+}
+
+# Internal helper: Type II ANOVA table for a fitted factorial aov() model.
+# Each term is tested after all other terms that do not contain it (so a main
+# effect is adjusted for the other main effects but not for interactions it
+# is part of), against the residual mean square of the full model. The
+# result therefore does not depend on the order of the terms. In a balanced
+# design it equals the sequential (Type I) table from summary(aov()).
+# Returns a data frame with one row per term (row names are the term labels)
+# and columns "Sum Sq", "Df", "F value" and "Pr(>F)".
+type2_anova <- function(fit) {
+  mf <- stats::model.frame(fit)
+  tt <- stats::terms(fit)
+  labels <- attr(tt, "term.labels")
+  # variables x terms incidence matrix, without the response row
+  fac <- attr(tt, "factors")[-1, , drop = FALSE]
+  resp <- as.name(names(mf)[1])
+
+  rss <- function(lbls) {
+    f <- stats::reformulate(if (length(lbls) > 0) lbls else "1", response = resp)
+    m <- stats::lm(f, data = mf)
+    c(ss = stats::deviance(m), df = stats::df.residual(m))
+  }
+  full <- c(ss = stats::deviance(fit), df = stats::df.residual(fit))
+
+  rows <- lapply(seq_along(labels), function(i) {
+    vars_i <- fac[, i] > 0
+    # terms that contain term i (including itself) are left out of the base
+    contains_i <- vapply(seq_along(labels),
+                         function(j) all(fac[vars_i, j] > 0), logical(1))
+    base <- labels[!contains_i]
+    r0 <- rss(base)
+    r1 <- rss(c(base, labels[i]))
+    ss <- unname(r0["ss"] - r1["ss"])
+    df <- unname(r0["df"] - r1["df"])
+    if (df > 0 && full[["df"]] > 0) {
+      f_val <- (ss / df) / (full[["ss"]] / full[["df"]])
+      p_val <- stats::pf(f_val, df, full[["df"]], lower.tail = FALSE)
+    } else {
+      f_val <- NA_real_
+      p_val <- NA_real_
+    }
+    data.frame(`Sum Sq` = ss, Df = df, `F value` = f_val, `Pr(>F)` = p_val,
+               check.names = FALSE)
+  })
+  out <- do.call(rbind, rows)
+  rownames(out) <- labels
+  out
+}
+
 # aovSummaryTable -------------------------------------------------------------
 
 #' AoV summary table
@@ -82,7 +141,10 @@ aovSummaryTable <- function(aov_data,
   col_skip_label <- function(col_name) {
     col_vals <- aov_data[[col_name]]
     if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return("invariant")
+    # Observations with a missing group are dropped by aov(), so they must
+    # not count as a group or towards the residual degrees of freedom.
     non_na_groups <- aov_data[[group_var]][!is.na(col_vals)]
+    non_na_groups <- non_na_groups[!is.na(non_na_groups)]
     n_groups <- length(unique(non_na_groups))
     if (n_groups < 2) return("invariant")
     if (length(non_na_groups) - n_groups < 2) return("insufficient data")
@@ -92,6 +154,7 @@ aovSummaryTable <- function(aov_data,
   # Analyse each numeric column; everything else (factors, characters, the
   # grouping variable itself) is ignored.
   numeric_cols <- colnames(aov_data)[sapply(aov_data, is.numeric)]
+  stop_if_type_column(numeric_cols)
   skip_labels <- character(0)
 
   for (columnname in numeric_cols) {
@@ -212,6 +275,23 @@ aovSummaryTable <- function(aov_data,
 #'  across variables). A "Type" column is added so that the row labels export
 #'  correctly to Excel.
 #'
+#' @details
+#' \strong{Sums of squares and unbalanced designs.} P-values and F-values use
+#' Type II sums of squares: each effect is tested after all other effects
+#' that do not contain it (a main effect is adjusted for the other main
+#' effects, but not for interactions it is part of), against the residual
+#' mean square of the full model. The results therefore do not depend on the
+#' order of \code{group_vars}. In a balanced design (the same number of
+#' observations in every combination of the grouping variables) Type II
+#' results are identical to the sequential (Type I) results of
+#' \code{summary(aov())}. In an unbalanced design they differ, and a warning
+#' names the affected variables. Note that a design can be balanced overall
+#' but unbalanced for a particular variable, because observations with an NA
+#' in that variable are dropped for its ANOVA. Group means and Tukey letters
+#' come from the full model and are unaffected. With \code{return_raw = TRUE}
+#' the Type II table for each variable is stored as \code{type2} alongside
+#' the \code{aov} and \code{tukey} objects.
+#'
 #' @param aov_data The data frame containing the data.
 #' @param group_vars A vector of column names containing the grouping variables.
 #' @param output_file Optional file name (with .xlsx extension) to save the table.
@@ -246,7 +326,10 @@ aovInteractSummaryTable <- function(aov_data,
   col_skip_label <- function(col_name) {
     col_vals <- aov_data[[col_name]]
     if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return("INVARIANT")
-    non_na_data <- aov_data[!is.na(col_vals), ]
+    # Observations with a missing grouping value are dropped by aov(), so
+    # they must not count as a cell or towards the residual degrees of freedom.
+    non_na_data <- aov_data[!is.na(col_vals) &
+                              stats::complete.cases(aov_data[group_vars]), ]
     if (any(vapply(group_vars,
                    function(gv) length(unique(non_na_data[[gv]])) < 2,
                    logical(1)))) {
@@ -260,6 +343,7 @@ aovInteractSummaryTable <- function(aov_data,
   # Analyse each numeric column; everything else (factors, characters, the
   # grouping variables themselves) is ignored.
   numeric_cols <- colnames(aov_data)[sapply(aov_data, is.numeric)]
+  stop_if_type_column(numeric_cols)
   skip_labels <- vapply(numeric_cols, col_skip_label, character(1))
   model_cols <- numeric_cols[is.na(skip_labels)]
 
@@ -274,7 +358,11 @@ aovInteractSummaryTable <- function(aov_data,
       formula <- as.formula(paste0("`", col_name, "` ~ ", rhs))
       t.anova <- aov(formula, data = aov_data, na.action = na.omit)
       test2 <- agricolae::HSD.test(t.anova, trt = group_vars, group = TRUE)
-      list(aov = t.anova, tukey = test2)
+      # Balanced: every combination of the grouping variables has the same
+      # number of observations for this column (after removing NAs).
+      cell_n <- table(droplevels(stats::model.frame(t.anova)[group_vars]))
+      list(aov = t.anova, tukey = test2, type2 = type2_anova(t.anova),
+           balanced = length(unique(as.vector(cell_n))) == 1)
     }, error = function(e) e)
   })
   names(models) <- model_cols
@@ -296,13 +384,11 @@ aovInteractSummaryTable <- function(aov_data,
   # Collect all treatment-combination row names across variables.
   row_names <- unique(unlist(lapply(models, function(m) rownames(m$tukey$groups))))
 
-  # Determine all effect names from the first ANOVA (excluding Residuals).
-  # Note: rownames from summary(aov()) have trailing whitespace, so we must
-  # trim before comparing.
+  # All effect names (main effects and interactions). These come from the
+  # model terms, so they are the same for every variable.
   effect_names <- c()
   if (length(models) > 0) {
-    first_summary <- summary(models[[1]]$aov)[[1]]
-    effect_names <- setdiff(trimws(rownames(first_summary)), "Residuals")
+    effect_names <- rownames(models[[1]]$type2)
   }
 
   # Create row labels with separate rows for each effect's statistics
@@ -328,11 +414,13 @@ aovInteractSummaryTable <- function(aov_data,
     }
 
     # Extract ALL effects' p-values and F-values by name (not by position)
-    aov_summary <- summary(t.anova)[[1]]
-    rownames(aov_summary) <- trimws(rownames(aov_summary))
+    # from the Type II table. An effect that cannot be estimated (e.g. an
+    # interaction with empty cells) has NA statistics.
+    aov_summary <- models[[col_name]]$type2
     effect_stats <- c()
     for (effect in effect_names) {
-      if (effect %in% rownames(aov_summary)) {
+      if (effect %in% rownames(aov_summary) &&
+          !is.na(aov_summary[effect, "Pr(>F)"])) {
         p_val <- aov_summary[effect, "Pr(>F)"]
         f_val <- aov_summary[effect, "F value"]
 
@@ -387,6 +475,20 @@ aovInteractSummaryTable <- function(aov_data,
   }
 
   warn_skipped_columns(skip_labels[!is.na(skip_labels)])
+
+  unbalanced_cols <- model_cols[!vapply(models, function(m) m$balanced,
+                                        logical(1))]
+  if (length(unbalanced_cols) > 0) {
+    warning(
+      "Unbalanced design (unequal numbers of observations per combination ",
+      "of grouping variables, after removing NAs) for: ",
+      paste(unbalanced_cols, collapse = ", "),
+      ". P-values and F-values use Type II sums of squares, so they do not ",
+      "depend on the order of group_vars, but they differ from ",
+      "summary(aov()), which is sequential (Type I).",
+      call. = FALSE
+    )
+  }
 
   if (!is.null(output_file)) {
     openxlsx::write.xlsx(summary_table, output_file, rowNames = FALSE)

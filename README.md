@@ -69,6 +69,8 @@ Generates a summary table of ANOVA results including interaction terms for two, 
 - Significance indicators for each effect
 - BH-corrected p-values and significance for all effects
 
+**Sums of squares and unbalanced designs:** P-values and F-values use Type II sums of squares – each effect is tested after all other effects that do not contain it, against the residual mean square of the full model – so the results do not depend on the order of `group_vars`. In a balanced design (the same number of observations in every combination of the grouping variables) these are identical to the sequential (Type I) results of `summary(aov())`. In an unbalanced design they differ, and a warning names the affected variables. A design can be balanced overall but unbalanced for a particular variable, because observations with an `NA` in that variable are dropped for its ANOVA. Group means and Tukey letters are unaffected.
+
 **Example:**
 ```r
 library(agricolae)
@@ -129,7 +131,7 @@ Converts spectrophotometry transmission data to CIELab colour values using the O
 - `sample_col` - Column to group by. **This controls averaging:**
   - `"WineName"` (default) - One result per wine, averages replicates
   - `"Replicate"` - One result per replicate, no averaging
-- `path_mm` - Cuvette path length in mm (default: 10)
+- `path_mm` - Cuvette path length in mm (default: 10); must be a single positive number
 
 **Output:** A data.frame with one row per unique value of `sample_col`:
 - `<sample_col>` - Your sample identifier
@@ -269,7 +271,7 @@ Calculate mean pairwise colour differences between all observations in different
 - `reference_level` - Reference level for comparisons (default: "CTRL")
 - `target_levels` - Specific levels to compare (NULL = all non-reference levels)
 - `group_by` - Optional grouping columns for nested designs
-- `method` - Either "CIE1976" (default) or "CIE2000"
+- `method` - Either "CIE1976" (default) or "CIE2000" (not case-sensitive); any other value is an error
 
 **Output:** A data.frame with columns:
 - `comparison` - Description of comparison
@@ -405,40 +407,58 @@ Parses a multi-sample UV-DAD peak table exported from Agilent MassHunter Quantit
 - `area` - Peak area
 
 **Notes:**
-- Sample order in the output matches order of appearance in the file. The first sample is used as the alignment reference by `align_peaks_by_rt()`, so file order matters.
+- Sample order in the output matches order of appearance in the file. The first sample is used as the reference for drift estimation by `align_peaks_by_rt()`, so file order matters.
 - Column positions are read from the header row within each block, so the function is robust to exports with different column ordering or subsets.
-- Sample names are extracted from the text after `Ref=off` on each block's header line (e.g. `Ref=off 10.PBDEAL_CTRL_RT_0M_2.d` → `10.PBDEAL_CTRL_RT_0M_2`).
+- Sample names are extracted from the text after the `Ref=` setting on each block's header line (e.g. `Ref=off 10.PBDEAL_CTRL_RT_0M_2.d` → `10.PBDEAL_CTRL_RT_0M_2`); a reference wavelength such as `Ref=360,100` is handled in the same way.
 
 ---
 
-#### `align_peaks_by_rt(peaks_long, max_drift)`
+#### `align_peaks_by_rt(peaks_long, max_drift, rt_tol, drift_model)`
 
-Aligns peaks across samples by matching each sample's peaks to the nearest RT in the reference sample (the first sample). Uses greedy one-to-one nearest-neighbour matching, flags ambiguous and unmatched peaks, and clusters peaks absent from the reference into new groups.
+Aligns peaks across samples by retention time in three steps:
+
+1. **Drift correction** – each sample's retention-time drift relative to the reference sample (the first sample) is estimated and removed.
+2. **Grouping** – the drift-corrected retention times of all samples are grouped into peak groups, with at most one peak per sample in a group. Peaks absent from the reference form groups in exactly the same way as those present in it.
+3. **Flagging** – peaks whose assignment is a close call are flagged for manual review.
 
 **Parameters:**
-- `peaks_long` - Long-format data frame from `read_agilent_dad_peaks()`
-- `max_drift` - Maximum RT difference (minutes) for a valid match (default: `0.5`). Set generously — ambiguity flagging handles the hard cases. Check `result$drift_stats` to calibrate: if `max_abs_diff` is consistently under 0.1 min you can tighten it.
+- `peaks_long` - Long-format data frame from `read_agilent_dad_peaks()` (columns `sample`, `peak`, `rt`, `height`, `area`; any further columns are carried through)
+- `max_drift` - The largest RT shift (minutes) expected between a sample and the reference for the same compound (default: `0.5`). It limits which peak pairs are considered when estimating drift; it is not the width of a matching window. Check `result$drift_stats` to calibrate: if `max_abs_diff` is consistently under 0.1 min you can tighten it.
+- `rt_tol` - The largest spread (minutes) of drift-corrected RTs allowed within one peak group. `NULL` (default) estimates it from the scatter left after drift correction; the value used is reported in a message and in `result$params`.
+- `drift_model` - `"auto"` (default) lets drift vary along the run when a sample has enough anchor peaks (a straight line in RT with four or more, plus a smooth curve with ten or more) and otherwise uses a single offset; `"constant"` always uses a single offset per sample; `"none"` applies no drift correction.
 
-**Output:** A named list with three elements:
+**Output:** A named list with four elements:
 
-`$aligned` — Long-format table, one row per peak per sample:
-- `sample`, `peak`, `rt`, `height`, `area` — as parsed
-- `ref_rt` — RT of the matched reference peak
-- `rt_diff` — signed RT difference from reference (minutes)
-- `flag` — `"OK"`, `"UNMATCHED"`, or `"AMBIGUOUS"`
-- `flag_reason` — plain-English explanation for flagged rows
+`$aligned` — Long-format table with one row for every combination of peak group and sample:
+- `sample`, `peak`, `rt`, `height`, `area` — as parsed (`NA` where the sample has no peak in the group)
+- `peak_group` — group number, in elution order
+- `ref_rt` — the group's RT on the reference sample's time scale: the reference sample's own peak RT if it has one in the group, otherwise the mean drift-corrected RT of the group
+- `rt_corrected` — RT after removing the sample's drift
+- `rt_diff` — raw `rt` minus `ref_rt` (i.e. including drift)
+- `flag` — `"OK"`, `"AMBIGUOUS"`, or `"MISSING"`
+- `flag_reason` — plain-English explanation for ambiguous rows
 
-`$summary` — One row per peak group (reference peaks + any new groups found only in non-reference samples):
-- `ref_rt`, `in_reference`, `mean_rt`, `sd_rt`, `cv_pct` — equivalent to the average/SD/CV% columns in a manual Excel alignment
-- `n_matched`, `n_ambiguous`, `n_missing` — counts per group
+`$summary` — One row per peak group:
+- `peak_group`, `ref_rt`, `in_reference` (whether the reference sample has a peak in the group)
+- `mean_rt`, `sd_rt`, `cv_pct` — of the raw RTs of the `OK` peaks; equivalent to the average/SD/CV% columns in a manual Excel alignment
+- `n_matched` (`OK` peaks), `n_ambiguous`, `n_missing` (samples with no peak in the group)
 
 `$drift_stats` — One row per sample:
 - `mean_rt_diff`, `sd_rt_diff`, `mean_abs_diff`, `max_abs_diff` — overall drift vs reference
 - `n_matched`, `n_ambiguous`, `n_missing` — peak counts
+- `n_anchors`, `drift_model` — how many anchor peaks the drift estimate rests on, and the model applied
+
+`$params` — The settings used: `reference`, `max_drift`, `rt_tol`, `drift_model`.
+
+**How it works:**
+- *Drift estimation.* For each sample, every pairing of one of its peaks with a reference peak within `max_drift` is a candidate. The anchors are the longest chain of candidates that keeps the elution order in both samples and along which the RT difference changes smoothly; chance pairings would need a jump in drift and are passed over. A drift model is then fitted to the anchors.
+- *Grouping.* The drift-corrected RTs are partitioned so that no group contains two peaks from the same sample or spans more than `rt_tol`; among all such partitions the one with the least within-group scatter (plus a penalty per group, so that peaks are not split needlessly) is found exactly. A sample containing two close peaks therefore forces them into two groups, which is what separates close pairs.
 
 **Flags:**
-- `AMBIGUOUS` — the RT difference to the matched reference peak is ≥ the spacing between that reference peak and its nearest neighbour. The assignment may be unreliable; manual review is recommended.
-- `UNMATCHED` — no reference peak within `max_drift`. In a second pass, unmatched peaks are clustered into new groups; samples without a peak in that group receive `NA`.
+- `AMBIGUOUS` — the peak could plausibly belong to a neighbouring group instead: its corrected RT is also within `rt_tol` of that group, the group has no peak from the same sample, and the peak is not clearly closer to the other members of its own group. Ambiguous peaks stay in their assigned group but are left out of the group's mean, SD and CV%. Manual review is recommended.
+- `MISSING` — the sample has no peak in this group (the row is a placeholder with `NA` values).
+
+**Limits:** retention time alone cannot separate two compounds whose spacing is similar to the random peak-to-peak scatter remaining after drift correction. Such regions are flagged rather than resolved and should be checked by hand (e.g. against spectra). Drift is estimated relative to the first sample, so a reference with few peaks gives few anchors.
 
 **Example:**
 ```r
@@ -448,14 +468,18 @@ library(tidyr)
 peaks_long <- read_agilent_dad_peaks("polyphenols_peaktable.csv")
 result     <- align_peaks_by_rt(peaks_long, max_drift = 0.25)
 
-result$summary      # mean RT, SD, CV% per peak — equivalent to manual Excel workflow
+result$summary      # mean RT, SD, CV% per peak group
 result$drift_stats  # per-sample drift vs reference — use to tune max_drift
 result$aligned      # full table with flags for review
+result$params       # settings used, including the estimated rt_tol
+
+# Peaks to review by hand
+subset(result$aligned, flag == "AMBIGUOUS")
 
 # Pivot to wide format
 area_wide <- pivot_wider(
-  result$aligned[!is.na(result$aligned$ref_rt), ],
-  id_cols     = ref_rt,
+  result$aligned,
+  id_cols     = c(peak_group, ref_rt),
   names_from  = sample,
   values_from = area
 )
@@ -485,7 +509,7 @@ area_wide <- pivot_wider(
 
 ### For Agilent MassHunter peak table functions (`read_agilent_dad_peaks`, `align_peaks_by_rt`)
 - Base R only for parsing and alignment
-- tidyr (>= 1.3.0) recommended for pivoting `$aligned` to wide format
+- tidyr (>= 1.3.0) recommended (optional) for pivoting `$aligned` to wide format
 
 ---
 

@@ -9,6 +9,16 @@
 #
 # Dependencies: ggplot2, colorspace (for visualization functions)
 
+# Column names used inside dplyr and ggplot2 expressions; declared here so
+# R CMD check does not report them as undefined global variables.
+utils::globalVariables(c(
+  "CIELab_L", "CIELab_a", "CIELab_b", "L", "a", "b", "C", "h",
+  "L_ref", "a_ref", "b_ref", "C_ref", "h_ref",
+  "CIELab_L_ref", "CIELab_a_ref", "CIELab_b_ref",
+  "CIELab_L_target", "CIELab_a_target", "CIELab_b_target",
+  "dE", "hex", "label", "label_col"
+))
+
 # ==============================================================================
 # OIV Method Coefficients (Table 1)
 # ==============================================================================
@@ -176,7 +186,8 @@ cielab_spectroscopy_percentage_to_fraction <- function(transmission_pct) {
 #'     \item Use "Replicate" to get one result per replicate (no averaging)
 #'   }
 #'   Default: auto-detects "WineName", "sample_name", "Sample", or first column.
-#' @param path_mm Numeric optical path length in millimeters (default: 10)
+#' @param path_mm Numeric optical path length in millimeters (default: 10).
+#'   Must be a single positive number.
 #'
 #' @return A data.frame with one row per unique value of sample_col, containing:
 #'   \describe{
@@ -244,6 +255,12 @@ cielab_spectroscopy_percentage_to_fraction <- function(transmission_pct) {
 #' @export
 cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
 
+  if (!is.numeric(path_mm) || length(path_mm) != 1 || is.na(path_mm) ||
+      path_mm <= 0) {
+    stop("'path_mm' must be a single positive number (optical path length ",
+         "in mm).")
+  }
+
   # Detect data format
   has_wavelength_cols <- any(grepl("^X[0-9]+$", names(data)))
   has_long_format <- all(c("lambda", "T") %in% names(data))
@@ -252,7 +269,7 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
     stop("Cannot detect data format. Expected either:\n",
          "  - Wide format: columns like X780, X700, X600, etc.\n",
          "  - Long format: columns 'lambda' and 'T'\n",
-         "Found columns: ", paste(head(names(data), 10), collapse = ", "))
+         "Found columns: ", paste(utils::head(names(data), 10), collapse = ", "))
   }
 
   # Auto-detect sample column if not specified
@@ -314,9 +331,36 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
   }
 
 
+  # Text in the wavelength or transmittance column (e.g. a CSV read with
+  # footer lines) would otherwise fail later with a cryptic error.
+  if (!is.numeric(data_long$lambda) || !is.numeric(data_long$T)) {
+    stop("Wavelength and transmittance values must be numeric; got ",
+         class(data_long$lambda)[1], " wavelengths and ",
+         class(data_long$T)[1], " transmittance. Check the source data for ",
+         "text entries and convert with as.numeric().")
+  }
+
+  # Rows without a sample identifier cannot be assigned to a sample.
+  na_sample <- is.na(data_long$.sample_id)
+  if (any(na_sample)) {
+    warning("Removed ", sum(na_sample), " reading(s) with a missing value in '",
+            sample_col, "'.")
+    data_long <- data_long[!na_sample, ]
+  }
+
+  # Snap wavelengths that differ from a whole number only by floating-point
+  # error (e.g. 380.0000001) so they still match the OIV grid exactly.
+  near_int <- !is.na(data_long$lambda) &
+    abs(data_long$lambda - round(data_long$lambda)) < 1e-6
+  data_long$lambda[near_int] <- round(data_long$lambda[near_int])
+
   # Check for percentage values (only warn if clearly percentages, not instrument noise)
-  # Values like 1.003 are normal measurement noise, only warn if > 1.1
-  max_T <- max(data_long$T, na.rm = TRUE)
+  # Values like 1.003 are normal measurement noise, only warn if > 1.1.
+  # Only the 380-780 nm readings used by the method are checked, so noisy
+  # readings elsewhere (e.g. in the UV) don't trigger a spurious warning.
+  in_range <- !is.na(data_long$lambda) & data_long$lambda >= 380 &
+    data_long$lambda <= 780 & !is.na(data_long$T)
+  max_T <- if (any(in_range)) max(data_long$T[in_range]) else -Inf
   if (max_T > 1.1) {
     warning("Transmittance values significantly > 1 detected (max = ", round(max_T, 2), "). ",
             "Ensure T is fraction (0-1), not percentage (0-100). ",
@@ -366,7 +410,7 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
     if (length(missing_wl) > 0) {
       warning("Sample '", s, "' is missing readings at ", length(missing_wl),
               " of the ", length(oiv_grid), " OIV grid wavelengths (e.g. ",
-              paste(head(missing_wl, 3), collapse = ", "),
+              paste(utils::head(missing_wl, 3), collapse = ", "),
               " nm); returning NA. OIV-MA-AS2-11 requires readings every ",
               "5 nm from 380 to 780 nm.")
       return(na_result(s))
@@ -380,7 +424,7 @@ cielab_from_spectrum <- function(data, sample_col = NULL, path_mm = 10) {
     if (any(na_wl)) {
       warning("Sample '", s, "' has NA transmittance at ", sum(na_wl),
               " OIV grid wavelength(s) (e.g. ",
-              paste(head(oiv_grid[na_wl], 3), collapse = ", "),
+              paste(utils::head(oiv_grid[na_wl], 3), collapse = ", "),
               " nm); returning NA. Check the source data for missing or ",
               "non-numeric readings.")
       return(na_result(s))
@@ -612,8 +656,8 @@ deltaE94 <- function(L1, a1, b1, L2, a2, b2) {
 #' @param b Numeric b* value(s)
 #' @param fixup Logical; if TRUE (default), colours outside the sRGB gamut are
 #'   clipped to the nearest representable colour rather than returned as NA.
-#' @return Character vector of hex colour strings (e.g. "#A03C2F"). Missing
-#'   coordinates give NA.
+#' @return Character vector of hex colour strings (e.g. "#A03C2F"). A colour
+#'   with any missing coordinate gives NA.
 #'
 #' @details Requires the \pkg{colorspace} package.
 #'
@@ -639,7 +683,19 @@ cielab_to_hex <- function(L, a, b, fixup = TRUE) {
   L <- check_num(L, "L")
   a <- check_num(a, "a")
   b <- check_num(b, "b")
-  colorspace::hex(colorspace::LAB(L, a, b), fixup = fixup)
+  n <- max(length(L), length(a), length(b))
+  L <- rep_len(L, n)
+  a <- rep_len(a, n)
+  b <- rep_len(b, n)
+  # colorspace's fixup would otherwise turn a missing coordinate into a
+  # plausible-looking colour, so convert only the complete rows.
+  out <- rep(NA_character_, n)
+  ok <- !is.na(L) & !is.na(a) & !is.na(b)
+  if (any(ok)) {
+    out[ok] <- colorspace::hex(colorspace::LAB(L[ok], a[ok], b[ok]),
+                               fixup = fixup)
+  }
+  out
 }
 
 #' Calculate centroid-to-centroid colour differences
@@ -704,6 +760,7 @@ cielab_to_hex <- function(L, a, b, fixup = TRUE) {
 #' @seealso \code{\link{calc_pairwise_dE}} for observation-level comparisons
 #'
 #' @importFrom farver compare_colour
+#' @importFrom rlang .data
 #' @export
 calc_colour_diff <- function(data,
                             compare_by = "EtOH",
@@ -806,7 +863,8 @@ calc_colour_diff <- function(data,
 #' @param group_by Character vector of column names to group by before
 #'   computing pairwise differences. NULL for no grouping.
 #' @param method Character specifying the Delta E formula to use.
-#'   Either "CIE1976" (default) or "CIE2000".
+#'   Either "CIE1976" (default) or "CIE2000" (not case-sensitive). Any other
+#'   value is an error.
 #'
 #' @return A data.frame with columns:
 #'   \describe{
@@ -870,6 +928,12 @@ calc_pairwise_dE <- function(data,
   if (!compare_by %in% names(data)) {
     stop("Column '", compare_by, "' not found in data")
   }
+  # An unrecognised method used to fall back silently to CIE1976.
+  if (!is.character(method) || length(method) != 1 ||
+      !toupper(method) %in% c("CIE1976", "CIE2000")) {
+    stop("'method' must be \"CIE1976\" or \"CIE2000\".")
+  }
+  method <- toupper(method)
   data <- .drop_na_lab(data, "calc_pairwise_dE")
   if (!reference_level %in% data[[compare_by]]) {
     stop("Reference level '", reference_level, "' not found in column '",
@@ -904,17 +968,22 @@ calc_pairwise_dE <- function(data,
                           suffix = c("_ref", "_target"),
                           relationship = "many-to-many")
 
+    if (!is.null(group_by)) {
+      n_lost <- nrow(dplyr::anti_join(dplyr::distinct(target_data[group_by]),
+                                      ref_data, by = group_by))
+      if (n_lost > 0) {
+        warning(n_lost, " group(s) have '", target, "' but no '",
+                reference_level, "' observations and are omitted from the '",
+                target, "' comparison.")
+      }
+    }
+
     if (method == "CIE2000") {
       crossed <- crossed %>%
-        dplyr::rowwise() %>%
         dplyr::mutate(
-          dE = farver::compare_colour(
-            from = matrix(c(CIELab_L_ref, CIELab_a_ref, CIELab_b_ref), ncol = 3),
-            to = matrix(c(CIELab_L_target, CIELab_a_target, CIELab_b_target), ncol = 3),
-            from_space = "lab", method = "CIE2000"
-          )[1]
-        ) %>%
-        dplyr::ungroup()
+          dE = deltaE00(CIELab_L_ref, CIELab_a_ref, CIELab_b_ref,
+                        CIELab_L_target, CIELab_a_target, CIELab_b_target)
+        )
     } else {
       crossed <- crossed %>%
         dplyr::mutate(
@@ -1027,6 +1096,14 @@ cielab_kinetics <- function(data,
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
   data <- .drop_na_lab(data, "cielab_kinetics")
+
+  # A missing timepoint cannot be placed in the series.
+  na_time <- is.na(data[[time_col]])
+  if (any(na_time)) {
+    warning("Dropping ", sum(na_time), " row(s) with a missing value in '",
+            time_col, "'.")
+    data <- data[!na_time, ]
+  }
 
   # Determine the chronological order of the timepoints.
   ordered_times <- .order_timepoints(data[[time_col]], time_levels)
@@ -1265,7 +1342,7 @@ cielab_swatch <- function(CIELab,
   }
   if (any(na_rows)) {
     warning("Dropping ", sum(na_rows), " row(s) with NA CIELab values: ",
-            paste(head(CIELab$WineName[na_rows], 5), collapse = ", "),
+            paste(utils::head(CIELab$WineName[na_rows], 5), collapse = ", "),
             if (sum(na_rows) > 5) ", ..." else "")
     CIELab <- CIELab[!na_rows, ]
   }
@@ -1378,18 +1455,9 @@ cielab_swatch <- function(CIELab,
 #'   transmission_col = "Transmittance"
 #' )
 #'
-#' # Then use with cielab_from_spectrum for each sample
-#' library(dplyr)
-#' results <- spectra %>%
-#'   group_by(sample_name) %>%
-#'   group_map(~ {
-#'     spec_df <- data.frame(
-#'       lambda = .x$lambda,
-#'       T = .x$T,
-#'       path_mm = 10
-#'     )
-#'     cielab_from_spectrum(spec_df)
-#'   })
+#' # Then calculate CIELab: the result can be passed directly, giving one
+#' # row per sample_name
+#' results <- cielab_from_spectrum(spectra, path_mm = 10)
 #' }
 #'
 #' @export
@@ -1426,7 +1494,7 @@ process_spectrum <- function(folder_path,
 
     # Read CSV with specified skip
     spec_data <- tryCatch(
-      read.csv(filepath, skip = skip),
+      utils::read.csv(filepath, skip = skip),
       error = function(e) {
         warning("Failed to read file: ", filepath, "\n  ", e$message)
         return(NULL)
@@ -1446,8 +1514,11 @@ process_spectrum <- function(folder_path,
     }
 
     # Extract and filter data
-    wl <- spec_data[[wavelength_col]]
-    trans <- spec_data[[transmission_col]]
+    # Coerce to numeric: footer or comment lines in the file make read.csv()
+    # return text columns, which would otherwise be compared as strings.
+    # Such non-numeric rows become NA and are dropped below.
+    wl <- suppressWarnings(as.numeric(as.character(spec_data[[wavelength_col]])))
+    trans <- suppressWarnings(as.numeric(as.character(spec_data[[transmission_col]])))
 
     valid_idx <- !is.na(wl) & wl >= wl_min & wl <= wl_max
 

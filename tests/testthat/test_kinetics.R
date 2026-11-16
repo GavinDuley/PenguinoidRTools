@@ -171,3 +171,17 @@ test_that("cielab_kinetics errors on missing columns or too few timepoints", {
     "at least two distinct timepoints"
   )
 })
+
+test_that("cielab_kinetics drops rows with a missing timepoint with a warning", {
+  d <- data.frame(
+    t = c(0, 0, 3, 3, 12, 12),
+    CIELab_L = c(50, 52, 45, 47, 40, 42),
+    CIELab_a = c(10, 11, 15, 16, 20, 21),
+    CIELab_b = c(5, 6, 8, 9, 12, 13)
+  )
+  expected <- cielab_kinetics(d[-1, ], "t")
+  d$t[1] <- NA
+  expect_warning(res <- cielab_kinetics(d, "t"), "missing value in 't'")
+  expect_equal(res, expected)
+  expect_false(anyNA(res))
+})

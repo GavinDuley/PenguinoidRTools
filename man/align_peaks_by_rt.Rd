@@ -4,57 +4,118 @@
 \alias{align_peaks_by_rt}
 \title{Align peaks across samples by retention time}
 \usage{
-align_peaks_by_rt(peaks_long, max_drift = 0.5)
+align_peaks_by_rt(
+  peaks_long,
+  max_drift = 0.5,
+  rt_tol = NULL,
+  drift_model = c("auto", "constant", "none")
+)
 }
 \arguments{
-\item{peaks_long}{Long-format data frame from \code{\link{read_agilent_dad_peaks}}.}
+\item{peaks_long}{Long-format data frame from
+\code{\link{read_agilent_dad_peaks}}, with columns \code{sample},
+\code{peak}, \code{rt}, \code{height} and \code{area}. Any further
+columns are carried through.}
 
-\item{max_drift}{Numeric. Maximum RT difference (minutes) allowed for a
-valid match. Peaks with no reference peak within this window are reported
-as \code{UNMATCHED}. Set generously — the ambiguity flagging handles hard
-cases. Default \code{0.5}.}
+\item{max_drift}{Numeric. The largest retention-time shift (minutes)
+expected between a sample and the reference for the same compound. It
+limits which peak pairs are considered when estimating each sample's
+drift; it is no longer the width of the matching window. Default
+\code{0.5}.}
+
+\item{rt_tol}{Numeric or \code{NULL}. The largest spread (minutes) of
+drift-corrected retention times allowed within one peak group. If
+\code{NULL} (default) it is estimated from the scatter left after drift
+correction (eight robust standard deviations of the RT differences
+between each sample's peaks and their nearest reference peaks, but at
+least \code{max_drift / 20} and at most \code{max_drift}). The value used is reported in a message and returned
+in \code{params}.}
+
+\item{drift_model}{Character. How drift is modelled for each sample:
+\code{"auto"} (default) lets drift vary along the run when a sample has
+enough anchor peaks (a straight line in RT with four or more anchors,
+plus a smooth curve with ten or more) and otherwise uses a single offset;
+\code{"constant"} always uses a single offset per sample; \code{"none"}
+applies no drift correction (then \code{rt_tol} defaults to
+\code{max_drift}).}
 }
 \value{
-A named list with three elements:
+A named list with four elements:
   \describe{
-    \item{\code{aligned}}{Long-format data frame, one row per peak per
-      sample, with columns \code{sample}, \code{peak}, \code{rt},
-      \code{height}, \code{area}, \code{ref_rt} (RT of the matched reference
-      peak), \code{rt_diff} (signed difference from reference, minutes),
-      \code{flag} (\code{"OK"}, \code{"UNMATCHED"}, or \code{"AMBIGUOUS"}),
-      and \code{flag_reason} (plain-English explanation for flagged rows).}
-    \item{\code{summary}}{One row per peak group (reference peaks plus any
-      new groups found only in non-reference samples), with \code{ref_rt},
-      \code{in_reference}, mean RT, SD, CV\%, and counts of matched,
-      ambiguous, and missing observations.}
-    \item{\code{drift_stats}}{One row per sample with overall drift
-      statistics vs the reference: mean signed RT diff, SD, mean absolute
-      diff, max absolute diff, and counts of matched/ambiguous/missing peaks.}
+    \item{\code{aligned}}{Long-format data frame with one row for every
+      combination of peak group and sample. Columns: \code{sample},
+      \code{peak}, \code{rt}, \code{height}, \code{area} (as supplied;
+      \code{NA} where the sample has no peak in the group),
+      \code{peak_group} (integer group number in elution order),
+      \code{ref_rt} (the group's retention time on the reference sample's
+      time scale: the reference sample's own peak RT if it has one in the
+      group, otherwise the mean drift-corrected RT of the group),
+      \code{rt_corrected} (RT after removing the sample's drift),
+      \code{rt_diff} (raw \code{rt} minus \code{ref_rt}, i.e. including
+      drift), \code{flag} (\code{"OK"}, \code{"AMBIGUOUS"} or
+      \code{"MISSING"}) and \code{flag_reason} (plain-English explanation
+      for ambiguous rows).}
+    \item{\code{summary}}{One row per peak group, with \code{peak_group},
+      \code{ref_rt}, \code{in_reference} (whether the reference sample has
+      a peak in the group), mean RT, SD and CV\% of the raw retention times
+      of the \code{"OK"} peaks, and \code{n_matched} (\code{"OK"} peaks),
+      \code{n_ambiguous} and \code{n_missing} (samples with no peak in the
+      group).}
+    \item{\code{drift_stats}}{One row per sample: \code{n_peaks},
+      \code{n_matched}, \code{n_ambiguous}, \code{n_missing}, the mean, SD,
+      mean absolute and maximum absolute \code{rt_diff} of its \code{"OK"}
+      peaks, the number of anchor peaks used to estimate its drift
+      (\code{n_anchors}) and the drift model applied (\code{drift_model}).}
+    \item{\code{params}}{The settings used: \code{reference},
+      \code{max_drift}, \code{rt_tol} and \code{drift_model}.}
   }
 }
 \description{
-Aligns peaks across samples by matching each sample's peaks to the nearest
-RT in the reference sample (the first sample in \code{peaks_long}). Uses
-greedy one-to-one nearest-neighbour matching, flags ambiguous and unmatched
-peaks, and clusters unmatched peaks into new groups for peaks absent from
-the reference.
+Aligns peaks across samples in three steps: (1) the retention-time drift of
+each sample is estimated relative to the reference sample (the first sample
+in \code{peaks_long}) and removed; (2) the drift-corrected retention times
+of all samples are grouped into peak groups, with at most one peak per
+sample in a group; (3) peaks whose assignment is a close call are flagged
+for manual review. Peaks that are absent from the reference sample form
+groups in exactly the same way as those that are present.
 }
 \details{
-**Matching.** For each sample, all pairwise absolute RT differences within
-\code{max_drift} are computed. Pairs are then assigned greedily from closest
-to furthest, with each reference peak and each sample peak used at most once.
+**Drift estimation.** For each sample, every pairing of one of its peaks
+with a reference peak within \code{max_drift} is a candidate. The anchors
+are the longest chain of candidates that keeps the elution order in both
+samples and along which the RT difference changes smoothly; chance
+pairings would need a jump in drift and are passed over. A drift model is
+then fitted to the anchors. With \code{drift_model = "auto"} the model depends
+on the number of anchors: the median anchor difference (fewer than four),
+a robust straight line in RT (four or more), and additionally a robust
+smooth curve (\code{\link[stats]{lowess}}) for what the line leaves over
+(ten or more), so that drift may change along the run. The model used for
+each sample is reported in \code{drift_stats}. A sample with no anchors
+gets a warning.
 
-**Ambiguity flag.** A match is flagged \code{AMBIGUOUS} when the absolute RT
-difference equals or exceeds the spacing between the matched reference peak
-and its nearest neighbouring reference peak. This indicates the assignment
-may be unreliable and warrants manual review.
+**Grouping.** The drift-corrected retention times of all samples are
+partitioned into groups such that no group contains two peaks from the same
+sample or spans more than \code{rt_tol}. Among all such partitions, the one
+with the smallest within-group scatter (plus a penalty per group, so that
+peaks are not split needlessly) is found exactly. Because groups are
+consecutive stretches of the corrected RT axis, the elution order of peaks
+within each sample is always respected. A sample containing two close peaks
+therefore forces them into two groups, which is what separates close pairs.
 
-**Unmatched peaks.** Sample peaks with no reference peak within
-\code{max_drift} are flagged \code{UNMATCHED}. In a second pass these are
-clustered by RT proximity into new peak groups (peaks genuine to
-non-reference samples). Each group is assigned a representative \code{ref_rt}
-equal to the mean RT of its founding members; samples lacking a peak in the
-group receive \code{NA} rows.
+**Ambiguity flag.** A peak is flagged \code{AMBIGUOUS} when it could
+plausibly belong to a neighbouring group instead: its corrected RT is also
+within \code{rt_tol} of that group, the group has no peak from the same
+sample, and the peak is not clearly closer to the other members of its own
+group (a peak that is alone in its group never is).
+Ambiguous peaks stay in their assigned group but are left out of the
+group's mean, SD and CV\%.
+
+**Limits.** Retention time alone cannot separate two compounds whose
+spacing is similar to the random peak-to-peak scatter remaining after
+drift correction. Such regions are flagged rather than resolved, and
+should be checked by hand (e.g. against spectra). The result also depends
+on the choice of reference sample for drift estimation: a reference with
+few peaks gives few anchors.
 }
 \examples{
 \dontrun{
@@ -64,12 +125,13 @@ result     <- align_peaks_by_rt(peaks_long, max_drift = 0.25)
 result$aligned      # full table with flags
 result$summary      # mean RT, SD, CV\% per peak group
 result$drift_stats  # per-sample drift statistics
+result$params       # settings used, including the estimated rt_tol
 
 # Pivot to wide format for further analysis
 library(tidyr)
 area_wide <- tidyr::pivot_wider(
-  result$aligned[!is.na(result$aligned$ref_rt), ],
-  id_cols     = ref_rt,
+  result$aligned,
+  id_cols     = c(peak_group, ref_rt),
   names_from  = sample,
   values_from = area
 )

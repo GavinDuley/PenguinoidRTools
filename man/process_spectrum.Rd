@@ -69,18 +69,9 @@ spectra <- process_spectrum(
   transmission_col = "Transmittance"
 )
 
-# Then use with cielab_from_spectrum for each sample
-library(dplyr)
-results <- spectra \%>\%
-  group_by(sample_name) \%>\%
-  group_map(~ {
-    spec_df <- data.frame(
-      lambda = .x$lambda,
-      T = .x$T,
-      path_mm = 10
-    )
-    cielab_from_spectrum(spec_df)
-  })
+# Then calculate CIELab: the result can be passed directly, giving one
+# row per sample_name
+results <- cielab_from_spectrum(spectra, path_mm = 10)
 }
 
 }
