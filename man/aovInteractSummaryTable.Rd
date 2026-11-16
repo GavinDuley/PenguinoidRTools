@@ -43,3 +43,16 @@ This function generates a table of means and key statistical
  across variables). A "Type" column is added so that the row labels export
  correctly to Excel.
 }
+\details{
+\strong{Unbalanced designs.} The model is fitted with \code{aov()}, which
+uses sequential (Type I) sums of squares: each effect is tested after the
+effects listed before it. In a balanced design (the same number of
+observations in every combination of the grouping variables) this makes no
+difference. In an unbalanced design the P-values and F-values of the main
+effects depend on the order of \code{group_vars}, so
+\code{c("A", "B")} and \code{c("B", "A")} can give different results; the
+highest-order interaction, the group means and the Tukey letters do not
+depend on the order. Note that a design can be balanced overall but
+unbalanced for a particular variable, because observations with an NA in
+that variable are dropped for its ANOVA.
+}

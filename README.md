@@ -69,6 +69,8 @@ Generates a summary table of ANOVA results including interaction terms for two, 
 - Significance indicators for each effect
 - BH-corrected p-values and significance for all effects
 
+**Unbalanced designs:** the model is fitted with `aov()`, which uses sequential (Type I) sums of squares, so each effect is tested after the effects listed before it. In a balanced design (the same number of observations in every combination of the grouping variables) this makes no difference. In an unbalanced design the P-values and F-values of the main effects depend on the order of `group_vars` – `c("A", "B")` and `c("B", "A")` can give different results. The highest-order interaction, the group means and the Tukey letters do not depend on the order. A design can be balanced overall but unbalanced for a particular variable, because observations with an `NA` in that variable are dropped for its ANOVA.
+
 **Example:**
 ```r
 library(agricolae)
