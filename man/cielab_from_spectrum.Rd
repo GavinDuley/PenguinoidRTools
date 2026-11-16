@@ -17,7 +17,8 @@ how results are aggregated:
 }
 Default: auto-detects "WineName", "sample_name", "Sample", or first column.}
 
-\item{path_mm}{Numeric optical path length in millimeters (default: 10)}
+\item{path_mm}{Numeric optical path length in millimeters (default: 10).
+Must be a single positive number.}
 }
 \value{
 A data.frame with one row per unique value of sample_col, containing:

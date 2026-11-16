@@ -129,7 +129,7 @@ Converts spectrophotometry transmission data to CIELab colour values using the O
 - `sample_col` - Column to group by. **This controls averaging:**
   - `"WineName"` (default) - One result per wine, averages replicates
   - `"Replicate"` - One result per replicate, no averaging
-- `path_mm` - Cuvette path length in mm (default: 10)
+- `path_mm` - Cuvette path length in mm (default: 10); must be a single positive number
 
 **Output:** A data.frame with one row per unique value of `sample_col`:
 - `<sample_col>` - Your sample identifier
@@ -269,7 +269,7 @@ Calculate mean pairwise colour differences between all observations in different
 - `reference_level` - Reference level for comparisons (default: "CTRL")
 - `target_levels` - Specific levels to compare (NULL = all non-reference levels)
 - `group_by` - Optional grouping columns for nested designs
-- `method` - Either "CIE1976" (default) or "CIE2000"
+- `method` - Either "CIE1976" (default) or "CIE2000" (not case-sensitive); any other value is an error
 
 **Output:** A data.frame with columns:
 - `comparison` - Description of comparison
@@ -407,7 +407,7 @@ Parses a multi-sample UV-DAD peak table exported from Agilent MassHunter Quantit
 **Notes:**
 - Sample order in the output matches order of appearance in the file. The first sample is used as the alignment reference by `align_peaks_by_rt()`, so file order matters.
 - Column positions are read from the header row within each block, so the function is robust to exports with different column ordering or subsets.
-- Sample names are extracted from the text after `Ref=off` on each block's header line (e.g. `Ref=off 10.PBDEAL_CTRL_RT_0M_2.d` → `10.PBDEAL_CTRL_RT_0M_2`).
+- Sample names are extracted from the text after the `Ref=` setting on each block's header line (e.g. `Ref=off 10.PBDEAL_CTRL_RT_0M_2.d` → `10.PBDEAL_CTRL_RT_0M_2`); a reference wavelength such as `Ref=360,100` is handled in the same way.
 
 ---
 
@@ -438,7 +438,7 @@ Aligns peaks across samples by matching each sample's peaks to the nearest RT in
 
 **Flags:**
 - `AMBIGUOUS` — the RT difference to the matched reference peak is ≥ the spacing between that reference peak and its nearest neighbour. The assignment may be unreliable; manual review is recommended.
-- `UNMATCHED` — no reference peak within `max_drift`. In a second pass, unmatched peaks are clustered into new groups; samples without a peak in that group receive `NA`.
+- `UNMATCHED` — no reference peak within `max_drift`. In a second pass, unmatched peaks are clustered into new groups; samples without a peak in that group receive `NA`. Because of this second pass, `UNMATCHED` is an intermediate state: in the returned `$aligned` table these peaks are flagged `OK` within their new group (`in_reference = FALSE` in `$summary`).
 
 **Example:**
 ```r
@@ -485,7 +485,7 @@ area_wide <- pivot_wider(
 
 ### For Agilent MassHunter peak table functions (`read_agilent_dad_peaks`, `align_peaks_by_rt`)
 - Base R only for parsing and alignment
-- tidyr (>= 1.3.0) recommended for pivoting `$aligned` to wide format
+- tidyr (>= 1.3.0) recommended (optional) for pivoting `$aligned` to wide format
 
 ---
 

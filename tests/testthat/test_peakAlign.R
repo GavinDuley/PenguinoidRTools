@@ -234,3 +234,51 @@ test_that("REWRITE TARGET: the ambiguity flag does not fire on the genuinely amb
   # surface this region.
   expect_equal(sum(res$aligned$flag == "AMBIGUOUS"), 0)  # REWRITE TARGET: should be > 0
 })
+
+# Regression tests for input handling -----------------------------------------
+
+test_that("read_agilent_dad_peaks handles a reference wavelength in the header", {
+  f <- tempfile(fileext = ".csv")
+  on.exit(unlink(f))
+  writeLines(c(
+    "D:\\data\\a.d,DAD1 A, Sig=280,4 Ref=360,100 a.d",
+    "D:\\data\\a.d,Peak,RT,Height,Area",
+    "D:\\data\\a.d,1,2.5,10,100",
+    "",
+    "D:\\data\\b.d,DAD1 A, Sig=280,4 Ref=off b.d",
+    "D:\\data\\b.d,Peak,RT,Height,Area",
+    "D:\\data\\b.d,1,2.6,11,110"
+  ), f)
+  res <- suppressMessages(read_agilent_dad_peaks(f))
+  expect_equal(res$sample, c("a", "b"))
+  expect_equal(res$rt, c(2.5, 2.6))
+  expect_type(res$peak, "integer")
+})
+
+test_that("align_peaks_by_rt validates its input", {
+  fx <- make_peak_fixture()$peaks
+  expect_error(align_peaks_by_rt(fx[c("sample", "rt")]), "missing required column")
+  expect_error(suppressMessages(align_peaks_by_rt(fx, max_drift = -1)), "max_drift")
+})
+
+test_that("align_peaks_by_rt drops peaks with a missing retention time", {
+  fx <- make_peak_fixture()$peaks
+  expected <- suppressMessages(align_peaks_by_rt(fx, max_drift = 0.25))
+  extra <- fx[1, ]
+  extra$sample <- "S3"
+  extra$rt <- NA_real_
+  expect_warning(
+    res <- suppressMessages(align_peaks_by_rt(rbind(fx, extra), max_drift = 0.25)),
+    "missing retention time"
+  )
+  expect_equal(res, expected)
+})
+
+test_that("extra columns in peaks_long are carried through alignment", {
+  fx <- make_peak_fixture()$peaks
+  fx$note <- "x"
+  res <- suppressMessages(align_peaks_by_rt(fx, max_drift = 0.25))
+  expect_true("note" %in% names(res$aligned))
+  base <- suppressMessages(align_peaks_by_rt(make_peak_fixture()$peaks, max_drift = 0.25))
+  expect_equal(res$summary, base$summary)
+})

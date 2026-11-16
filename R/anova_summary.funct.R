@@ -20,6 +20,17 @@ warn_skipped_columns <- function(skip_labels) {
   invisible(NULL)
 }
 
+# Internal helper: the summary tables use a "Type" column for the row labels,
+# so a response variable with that name would silently overwrite them.
+stop_if_type_column <- function(numeric_cols) {
+  if ("Type" %in% numeric_cols) {
+    stop("aov_data has a numeric column named 'Type', which clashes with the ",
+         "row-label column of the summary table. Please rename it before ",
+         "analysis.", call. = FALSE)
+  }
+  invisible(NULL)
+}
+
 # aovSummaryTable -------------------------------------------------------------
 
 #' AoV summary table
@@ -82,7 +93,10 @@ aovSummaryTable <- function(aov_data,
   col_skip_label <- function(col_name) {
     col_vals <- aov_data[[col_name]]
     if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return("invariant")
+    # Observations with a missing group are dropped by aov(), so they must
+    # not count as a group or towards the residual degrees of freedom.
     non_na_groups <- aov_data[[group_var]][!is.na(col_vals)]
+    non_na_groups <- non_na_groups[!is.na(non_na_groups)]
     n_groups <- length(unique(non_na_groups))
     if (n_groups < 2) return("invariant")
     if (length(non_na_groups) - n_groups < 2) return("insufficient data")
@@ -92,6 +106,7 @@ aovSummaryTable <- function(aov_data,
   # Analyse each numeric column; everything else (factors, characters, the
   # grouping variable itself) is ignored.
   numeric_cols <- colnames(aov_data)[sapply(aov_data, is.numeric)]
+  stop_if_type_column(numeric_cols)
   skip_labels <- character(0)
 
   for (columnname in numeric_cols) {
@@ -246,7 +261,10 @@ aovInteractSummaryTable <- function(aov_data,
   col_skip_label <- function(col_name) {
     col_vals <- aov_data[[col_name]]
     if (length(unique(col_vals[!is.na(col_vals)])) <= 1) return("INVARIANT")
-    non_na_data <- aov_data[!is.na(col_vals), ]
+    # Observations with a missing grouping value are dropped by aov(), so
+    # they must not count as a cell or towards the residual degrees of freedom.
+    non_na_data <- aov_data[!is.na(col_vals) &
+                              stats::complete.cases(aov_data[group_vars]), ]
     if (any(vapply(group_vars,
                    function(gv) length(unique(non_na_data[[gv]])) < 2,
                    logical(1)))) {
@@ -260,6 +278,7 @@ aovInteractSummaryTable <- function(aov_data,
   # Analyse each numeric column; everything else (factors, characters, the
   # grouping variables themselves) is ignored.
   numeric_cols <- colnames(aov_data)[sapply(aov_data, is.numeric)]
+  stop_if_type_column(numeric_cols)
   skip_labels <- vapply(numeric_cols, col_skip_label, character(1))
   model_cols <- numeric_cols[is.na(skip_labels)]
 

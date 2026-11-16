@@ -51,10 +51,11 @@
 #' tab-delimited, otherwise as comma-separated. Override with \code{sep} if
 #' needed.
 #'
-#' **Sample name.** Extracted from the text after \code{Ref=off} on the
-#' sample-header line, with the \code{.d} suffix removed. For example,
+#' **Sample name.** Extracted from the text after the \code{Ref=} setting on
+#' the sample-header line, with the \code{.d} suffix removed. For example,
 #' \code{Ref=off 10.PBDEAL_CTRL_RT_0M_2.d} yields
-#' \code{10.PBDEAL_CTRL_RT_0M_2}.
+#' \code{10.PBDEAL_CTRL_RT_0M_2}. A reference wavelength
+#' (e.g. \code{Ref=360,100}) is handled in the same way as \code{Ref=off}.
 #'
 #' **Column positions.** The column-name row within each sample block is used
 #' to locate \code{col_rt}, \code{col_height}, and \code{col_area} by name,
@@ -95,7 +96,10 @@ read_agilent_dad_peaks <- function(
   is_blank     <- function(x) grepl("^[\\t ,\"]*$", x, perl = TRUE)
   strip_quotes <- function(x) gsub('^"|"$', "", trimws(x))
 
-  results        <- list()
+  # Parsed fields are collected as character vectors and converted once at
+  # the end; building a data frame per peak is very slow on large exports.
+  out_sample <- out_peak <- out_rt <- out_height <- out_area <- list()
+  n_out          <- 0L
   current_sample <- NA_character_
   col_idx        <- NULL   # named integer: column name -> position
 
@@ -113,7 +117,7 @@ read_agilent_dad_peaks <- function(
     # We test the raw line (not a single split field) so that CSV files with
     # "Sig=280,4" split across two fields are still detected correctly.
     if (grepl("DAD", line, fixed = TRUE) && grepl("Sig=", line, fixed = TRUE)) {
-      sample_raw     <- sub(".*Ref=off\\s+", "", line)
+      sample_raw     <- sub(".*Ref=\\S+\\s+", "", line)
       sample_raw     <- gsub('[",\\s]+$', "", trimws(sample_raw), perl = TRUE)
       current_sample <- sub("\\.d$", "", trimws(sample_raw))
       col_idx        <- NULL
@@ -134,25 +138,30 @@ read_agilent_dad_peaks <- function(
         if (col_name %in% names(col_idx)) fields[col_idx[[col_name]]] else NA_character_
       }
 
-      results[[length(results) + 1L]] <- data.frame(
-        sample = current_sample,
-        peak   = as.integer(get_field(col_peak)),
-        rt     = as.numeric(get_field(col_rt)),
-        height = as.numeric(get_field(col_height)),
-        area   = as.numeric(get_field(col_area)),
-        stringsAsFactors = FALSE
-      )
+      n_out <- n_out + 1L
+      out_sample[[n_out]] <- current_sample
+      out_peak[[n_out]]   <- get_field(col_peak)
+      out_rt[[n_out]]     <- get_field(col_rt)
+      out_height[[n_out]] <- get_field(col_height)
+      out_area[[n_out]]   <- get_field(col_area)
     }
   }
 
-  if (length(results) == 0) {
+  if (n_out == 0L) {
     stop(
       "No peak data found in '", file_path, "'. ",
       "Ensure the file is a MassHunter UV-DAD peak table export."
     )
   }
 
-  do.call(rbind, results)
+  data.frame(
+    sample = unlist(out_sample),
+    peak   = as.integer(unlist(out_peak)),
+    rt     = as.numeric(unlist(out_rt)),
+    height = as.numeric(unlist(out_height)),
+    area   = as.numeric(unlist(out_area)),
+    stringsAsFactors = FALSE
+  )
 }
 
 # ==============================================================================
@@ -206,6 +215,10 @@ read_agilent_dad_peaks <- function(
 #' non-reference samples). Each group is assigned a representative \code{ref_rt}
 #' equal to the mean RT of its founding members; samples lacking a peak in the
 #' group receive \code{NA} rows.
+#' Because of this second pass, \code{UNMATCHED} is an intermediate state:
+#' in the returned \code{aligned} table these peaks carry the flag
+#' \code{"OK"} within their new group, which is identified by
+#' \code{in_reference = FALSE} in \code{summary}.
 #'
 #' @seealso \code{\link{read_agilent_dad_peaks}}
 #'
@@ -232,6 +245,24 @@ read_agilent_dad_peaks <- function(
 #' @export
 align_peaks_by_rt <- function(peaks_long, max_drift = 0.5) {
 
+  required_cols <- c("sample", "peak", "rt", "height", "area")
+  missing_cols  <- setdiff(required_cols, names(peaks_long))
+  if (length(missing_cols) > 0) {
+    stop("peaks_long is missing required column(s): ",
+         paste(missing_cols, collapse = ", "))
+  }
+  if (!is.numeric(max_drift) || length(max_drift) != 1 || is.na(max_drift) ||
+      max_drift < 0) {
+    stop("'max_drift' must be a single non-negative number (minutes).")
+  }
+
+  # A peak without a retention time cannot be aligned.
+  na_rt <- is.na(peaks_long$rt)
+  if (any(na_rt)) {
+    warning("Dropping ", sum(na_rt), " peak(s) with a missing retention time.")
+    peaks_long <- peaks_long[!na_rt, ]
+  }
+
   samples <- unique(peaks_long$sample)
 
   if (length(samples) < 2) {
@@ -246,10 +277,19 @@ align_peaks_by_rt <- function(peaks_long, max_drift = 0.5) {
   # Greedy one-to-one nearest-neighbour matching of one sample against the
   # reference. Returns a data frame with the same rows as smp_peaks, augmented
   # with ref_rt, rt_diff, flag, and flag_reason.
+  # Spacing between each reference peak and its nearest neighbouring
+  # reference peak (Inf when the reference has a single peak).
+  n_ref       <- nrow(ref_peaks)
+  ref_spacing <- rep(Inf, n_ref)
+  if (n_ref > 1) {
+    ref_dist       <- abs(outer(ref_peaks$rt, ref_peaks$rt, FUN = "-"))
+    diag(ref_dist) <- Inf
+    ref_spacing    <- apply(ref_dist, 1, min)
+  }
+
   match_sample_to_ref <- function(smp_peaks, ref_peaks, max_drift) {
 
     n_smp <- nrow(smp_peaks)
-    n_ref <- nrow(ref_peaks)
 
     # Build distance matrix (sample rows x reference cols)
     dist_mat   <- outer(smp_peaks$rt, ref_peaks$rt, FUN = function(a, b) abs(a - b))
@@ -258,59 +298,50 @@ align_peaks_by_rt <- function(peaks_long, max_drift = 0.5) {
       candidates <- candidates[order(dist_mat[candidates]), , drop = FALSE]
     }
 
-    assigned_smp <- logical(n_smp)
+    # matched_ref[si] is the reference peak assigned to sample peak si (NA if
+    # none). Pairs are taken closest-first, each peak used at most once.
+    matched_ref  <- rep(NA_integer_, n_smp)
     assigned_ref <- logical(n_ref)
-    matches      <- vector("list", n_smp)
 
     for (k in seq_len(nrow(candidates))) {
       si <- candidates[k, 1]
       ri <- candidates[k, 2]
-      if (!assigned_smp[si] && !assigned_ref[ri]) {
-        assigned_smp[si] <- TRUE
+      if (is.na(matched_ref[si]) && !assigned_ref[ri]) {
+        matched_ref[si]  <- ri
         assigned_ref[ri] <- TRUE
-
-        ref_rt_i  <- ref_peaks$rt[ri]
-        rt_diff_i <- smp_peaks$rt[si] - ref_rt_i
-        abs_d     <- abs(rt_diff_i)
-
-        other_ref_rts   <- ref_peaks$rt[-ri]
-        min_ref_spacing <- if (length(other_ref_rts) > 0)
-          min(abs(ref_rt_i - other_ref_rts)) else Inf
-        ambiguous <- abs_d >= min_ref_spacing
-
-        row             <- smp_peaks[si, ]
-        row$ref_rt      <- ref_rt_i
-        row$rt_diff     <- rt_diff_i
-        if (ambiguous) {
-          row$flag        <- "AMBIGUOUS"
-          row$flag_reason <- sprintf(
-            "RT diff to ref (%.3f min) >= spacing between adjacent ref peaks (%.3f min) \u2014 manual review needed",
-            abs_d, min_ref_spacing
-          )
-        } else {
-          row$flag        <- "OK"
-          row$flag_reason <- NA_character_
-        }
-        matches[[si]] <- row
       }
     }
 
-    # Unassigned sample peaks
-    for (si in which(!assigned_smp)) {
-      abs_all     <- dist_mat[si, ]
-      nearest_idx <- which.min(abs_all)
-      row             <- smp_peaks[si, ]
-      row$ref_rt      <- NA_real_
-      row$rt_diff     <- NA_real_
-      row$flag        <- "UNMATCHED"
-      row$flag_reason <- sprintf(
+    is_matched <- !is.na(matched_ref)
+    ref_rt     <- ref_peaks$rt[matched_ref]
+    rt_diff    <- smp_peaks$rt - ref_rt
+    spacing    <- ref_spacing[matched_ref]
+    ambiguous  <- is_matched & abs(rt_diff) >= spacing
+
+    flag        <- ifelse(is_matched, ifelse(ambiguous, "AMBIGUOUS", "OK"),
+                          "UNMATCHED")
+    flag_reason <- rep(NA_character_, n_smp)
+    flag_reason[ambiguous] <- sprintf(
+      "RT diff to ref (%.3f min) >= spacing between adjacent ref peaks (%.3f min) \u2014 manual review needed",
+      abs(rt_diff[ambiguous]), spacing[ambiguous]
+    )
+
+    # Unassigned sample peaks: report the nearest reference peak
+    um <- which(!is_matched)
+    if (length(um) > 0) {
+      nearest_idx <- apply(dist_mat[um, , drop = FALSE], 1, which.min)
+      flag_reason[um] <- sprintf(
         "No reference peak within %.3f min (nearest ref RT = %.3f, diff = %.3f min)",
-        max_drift, ref_peaks$rt[nearest_idx], abs_all[nearest_idx]
+        max_drift, ref_peaks$rt[nearest_idx], dist_mat[cbind(um, nearest_idx)]
       )
-      matches[[si]] <- row
     }
 
-    do.call(rbind, matches)
+    out             <- smp_peaks
+    out$ref_rt      <- ref_rt
+    out$rt_diff     <- rt_diff
+    out$flag        <- flag
+    out$flag_reason <- flag_reason
+    out
   }
 
   results <- list()
@@ -383,18 +414,12 @@ align_peaks_by_rt <- function(peaks_long, max_drift = 0.5) {
 
       missing_samples <- setdiff(samples, grp$sample)
       if (length(missing_samples) > 0) {
-        na_rows <- data.frame(
-          sample      = missing_samples,
-          peak        = NA_integer_,
-          rt          = NA_real_,
-          height      = NA_real_,
-          area        = NA_real_,
-          ref_rt      = grp_mean_rt,
-          rt_diff     = NA_real_,
-          flag        = "OK",
-          flag_reason = NA_character_,
-          stringsAsFactors = FALSE
-        )
+        # All-NA rows with the same columns and types as grp, so any extra
+        # columns in peaks_long are carried through.
+        na_rows        <- grp[rep(NA_integer_, length(missing_samples)), ]
+        na_rows$sample <- missing_samples
+        na_rows$ref_rt <- grp_mean_rt
+        na_rows$flag   <- "OK"
         grp <- rbind(grp, na_rows)
       }
       new_group_rows[[length(new_group_rows) + 1L]] <- grp

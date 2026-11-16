@@ -528,3 +528,106 @@ test_that("cielab_from_spectrum warns on percentage values", {
     "Transmittance values significantly > 1"
   )
 })
+
+# Regression tests for input handling -----------------------------------------
+
+flat_spectrum <- function(name = "w", T = 0.5) {
+  data.frame(WineName = name, lambda = seq(380, 780, by = 5), T = T)
+}
+
+test_that("cielab_from_spectrum validates path_mm", {
+  d <- flat_spectrum()
+  expect_error(cielab_from_spectrum(d, path_mm = 0), "path_mm")
+  expect_error(cielab_from_spectrum(d, path_mm = -1), "path_mm")
+  expect_error(cielab_from_spectrum(d, path_mm = "10"), "path_mm")
+})
+
+test_that("cielab_from_spectrum gives a clear error for non-numeric readings", {
+  d <- flat_spectrum()
+  d$T <- as.character(d$T)
+  expect_error(cielab_from_spectrum(d), "must be numeric")
+})
+
+test_that("cielab_from_spectrum tolerates floating-point error in wavelengths", {
+  d <- flat_spectrum()
+  expected <- cielab_from_spectrum(d)
+  d$lambda <- d$lambda + 1e-9
+  expect_equal(cielab_from_spectrum(d), expected)
+})
+
+test_that("readings outside 380-780 nm do not trigger the percentage warning", {
+  d <- rbind(flat_spectrum(), data.frame(WineName = "w", lambda = 300, T = 5))
+  expect_no_warning(res <- cielab_from_spectrum(d))
+  expect_equal(res, cielab_from_spectrum(flat_spectrum()))
+})
+
+test_that("rows with a missing sample identifier are dropped with a warning", {
+  d <- rbind(flat_spectrum(), flat_spectrum(name = NA))
+  expect_warning(res <- cielab_from_spectrum(d), "missing value in 'WineName'")
+  expect_equal(nrow(res), 1)
+  expect_false(anyNA(res))
+})
+
+test_that("cielab_to_hex returns NA for any missing coordinate", {
+  skip_if_not_installed("colorspace")
+  full <- cielab_to_hex(c(50, 60), c(1, 2), c(3, 4))
+  expect_equal(cielab_to_hex(c(50, NA), c(1, 2), c(3, 4)), c(full[1], NA))
+  expect_equal(cielab_to_hex(c(50, 60), c(1, NA), c(3, 4)), c(full[1], NA))
+  expect_equal(cielab_to_hex(c(50, 60), c(1, 2), c(NA, 4)), c(NA, full[2]))
+})
+
+test_that("calc_pairwise_dE validates method instead of silently using CIE1976", {
+  lab <- data.frame(
+    EtOH = rep(c("CTRL", "A"), each = 3),
+    CIELab_L = c(50, 52, 51, 40, 42, 41),
+    CIELab_a = c(10, 11, 12, 30, 31, 29),
+    CIELab_b = c(5, 6, 4, 20, 21, 19)
+  )
+  upper <- calc_pairwise_dE(lab, method = "CIE2000")
+  lower <- calc_pairwise_dE(lab, method = "cie2000")
+  expect_equal(as.data.frame(lower), as.data.frame(upper))
+  expect_false(isTRUE(all.equal(upper$dE_mean, calc_pairwise_dE(lab)$dE_mean)))
+
+  # CIE2000 mean matches farver's full reference x target matrix
+  ref <- as.matrix(lab[lab$EtOH == "CTRL", -1])
+  tgt <- as.matrix(lab[lab$EtOH == "A", -1])
+  expect_equal(upper$dE_mean,
+               mean(farver::compare_colour(ref, tgt, from_space = "lab",
+                                           method = "cie2000")))
+
+  expect_error(calc_pairwise_dE(lab, method = "CIE94"), "method")
+  expect_error(calc_pairwise_dE(lab, method = "nonsense"), "method")
+})
+
+test_that("calc_pairwise_dE warns when a group has no reference observations", {
+  lab <- data.frame(
+    Wine = c("x", "x", "x", "x", "y", "y"),
+    EtOH = c("CTRL", "CTRL", "A", "A", "A", "A"),
+    CIELab_L = c(50, 52, 40, 42, 41, 43),
+    CIELab_a = c(10, 11, 30, 31, 29, 28),
+    CIELab_b = c(5, 6, 20, 21, 19, 18)
+  )
+  expect_warning(res <- calc_pairwise_dE(lab, group_by = "Wine"),
+                 "no 'CTRL' observations")
+  expect_equal(res$Wine, "x")
+})
+
+test_that("process_spectrum copes with footer text in the CSV", {
+  dir <- tempfile("spectra")
+  dir.create(dir)
+  on.exit(unlink(dir, recursive = TRUE))
+  wl <- seq(380, 780, by = 5)
+  writeLines(c("header to skip",
+               "WL(nm),%T",
+               paste(wl, 50, sep = ","),
+               "End of scan,",
+               "Operator,someone"),
+             file.path(dir, "wineA.csv"))
+  res <- suppressMessages(process_spectrum(dir, skip = 1))
+  expect_equal(nrow(res), length(wl))
+  expect_type(res$lambda, "double")
+  expect_equal(unique(res$T), 0.5)
+  lab <- cielab_from_spectrum(res)
+  expect_equal(lab$sample_name, "wineA")
+  expect_false(anyNA(lab))
+})

@@ -30,7 +30,8 @@ If NULL, all non-reference levels are used.}
 computing pairwise differences. NULL for no grouping.}
 
 \item{method}{Character specifying the Delta E formula to use.
-Either "CIE1976" (default) or "CIE2000".}
+Either "CIE1976" (default) or "CIE2000" (not case-sensitive). Any other
+value is an error.}
 }
 \value{
 A data.frame with columns:

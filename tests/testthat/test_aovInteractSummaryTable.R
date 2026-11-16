@@ -300,3 +300,30 @@ test_that("unexpected per-column failures are labelled and warned about, not fat
   expect_true(any(grepl("tubers \\(NOT ANALYSABLE\\)", w2)))
 })
 
+
+test_that("a numeric column named 'Type' is rejected rather than overwriting the row labels", {
+  d <- greenhouse$greenhouse1
+  d$Type <- seq_len(nrow(d))
+  expect_error(aovSummaryTable(d, "variety"), "named 'Type'")
+  expect_error(aovInteractSummaryTable(d, c("variety", "method")), "named 'Type'")
+})
+
+test_that("observations with a missing group do not count towards the residual df check", {
+  # Only three observations have a group (a, a, b): one residual df, which is
+  # too few for Tukey. The NA-group rows must not hide that.
+  d <- data.frame(
+    g = c("a", "a", "b", NA, NA, NA, NA, NA),
+    h = c("x", "x", "y", "x", "y", "x", "y", "x"),
+    y = c(1, 2, 4, 3, 5, 6, 2, 8)
+  )
+  res <- suppressWarnings(aovSummaryTable(d, "g"))
+  expect_true(all(res$y == "insufficient data"))
+
+  d2 <- data.frame(
+    g = c("a", "a", "b", "b", NA, NA, NA, NA),
+    h = c("x", "y", "x", "y", "x", "y", "x", "y"),
+    y = c(1, 2, 4, 3, 5, 6, 2, 8)
+  )
+  res2 <- suppressWarnings(aovInteractSummaryTable(d2, c("g", "h")))
+  expect_true(all(res2$y == "INSUFFICIENT DATA"))
+})

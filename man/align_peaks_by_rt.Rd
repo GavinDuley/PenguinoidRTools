@@ -55,6 +55,10 @@ clustered by RT proximity into new peak groups (peaks genuine to
 non-reference samples). Each group is assigned a representative \code{ref_rt}
 equal to the mean RT of its founding members; samples lacking a peak in the
 group receive \code{NA} rows.
+Because of this second pass, \code{UNMATCHED} is an intermediate state:
+in the returned \code{aligned} table these peaks carry the flag
+\code{"OK"} within their new group, which is identified by
+\code{in_reference = FALSE} in \code{summary}.
 }
 \examples{
 \dontrun{

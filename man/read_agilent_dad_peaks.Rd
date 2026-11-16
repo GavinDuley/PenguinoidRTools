@@ -62,10 +62,11 @@ contains more tab characters than commas the file is treated as
 tab-delimited, otherwise as comma-separated. Override with \code{sep} if
 needed.
 
-**Sample name.** Extracted from the text after \code{Ref=off} on the
-sample-header line, with the \code{.d} suffix removed. For example,
+**Sample name.** Extracted from the text after the \code{Ref=} setting on
+the sample-header line, with the \code{.d} suffix removed. For example,
 \code{Ref=off 10.PBDEAL_CTRL_RT_0M_2.d} yields
-\code{10.PBDEAL_CTRL_RT_0M_2}.
+\code{10.PBDEAL_CTRL_RT_0M_2}. A reference wavelength
+(e.g. \code{Ref=360,100}) is handled in the same way as \code{Ref=off}.
 
 **Column positions.** The column-name row within each sample block is used
 to locate \code{col_rt}, \code{col_height}, and \code{col_area} by name,

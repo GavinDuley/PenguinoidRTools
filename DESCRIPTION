@@ -17,13 +17,12 @@ Imports:
     gtools (>= 3.9.5),
     openxlsx (>= 4.2.5.2),
     rlang (>= 0.4.11),
-    stringr (>= 1.4.0),
-    tidyr (>= 1.3.0),
     tools
 Suggests:
     testthat (>= 3.0.0),
     ggplot2 (>= 3.4.0),
     colorspace (>= 2.0.0),
-    svglite (>= 2.1.0)
+    svglite (>= 2.1.0),
+    tidyr (>= 1.3.0)
 RoxygenNote: 7.3.3
 Config/testthat/edition: 3
